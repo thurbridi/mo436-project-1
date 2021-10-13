@@ -1,7 +1,7 @@
 import gym
 
 if __name__ == '__main__':
-    env = gym.make('FrozenLake8x8-v0')
+    env = gym.make('FrozenLake8x8-v1')
     obs = env.reset()
 
     for t in range(1000):
