@@ -1,36 +1,41 @@
 import gym
 import numpy as np
 import random
+import time
+import pandas
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
  
-def print_values(V, size=8):
-    i = 0
+def print_values(Q, size=8):
+
+    # Get the max value for state
+    V = [max(q_s) for q_s in Q]
     
     print("\n\t\t State Value")
-
+    
+    s = 0
     for _ in range(size):
         
         print("------------------------------------------------")
 
         for _ in range(size):
             
-            v = V[i]
-            i += 1
-            if v >= 0:
-                print(" %.2f|" % v, end="")
+            if V[s] >= 0:
+                print(" %.2f|" % V[s], end="")
             else:
-                print("%.2f|" % v, end="")
+                print("%.2f|" % V[s], end="")
+                
+            s += 1
             
         print("")
         
     print("------------------------------------------------")
 
 
-def print_policy(policy, size=8):
+def print_policy(Q, size=8):
     
-    actions = ['l', 's', 'r', 'n']
+    actions_names = ['l', 's', 'r', 'n']
     
     i = 0
     
@@ -40,64 +45,89 @@ def print_policy(policy, size=8):
         print("------------------------------------------------")
 
         for _ in range(size):
-            a = actions[policy[i]]
+            
+            # Get the best action
+            best_action = _argmax(Q[i])
+
             i += 1
-            print("  %s  |" % a, end="")
+            print("  %s  |" % actions_names[best_action], end="")
             
         print("")
         
     print("------------------------------------------------")
     
 
-def print_stats(env, policy):
+def generate_stats(env, Q):
 
     wins = 0
     r = 100
     for i in range(r):
         
-        w = _run(env, policy)[-1][-1]
+        w = _run(env, Q)[-1][-1]
         
         if w == 1:
             wins += 1
     
-    print(wins/r)
+    return wins/r
     
-
-def _argmax(array):
     
-    # Finding the action with maximum value                
-    indices = [i for i, x in enumerate(array) if x == max(array)]
+def plot_episode_return(data):
+    
+    plt.xlabel("Episode")
+    plt.ylabel("Cummulative Reward")
+    plt.plot(data)
+    plt.show()
+    
+    
+def plot_V(data):
+    
+    plt.xlabel("Episode")
+    plt.ylabel("V*")
+    plt.plot(data)
+    plt.show()
+    
+    
+def _argmax(Q):
+    
+    # Find the action with maximum value                
+    actions = [a for a, v in enumerate(Q) if v == max(Q)]
 
-    return random.choice(indices)
+    return random.choice(actions)
                 
 
-def _sel_action(action, all_actions, eps=0.1):
-    
-    p = np.random.random()
-    
-    if p < (1 - eps):
-        return action
-    else:
-        return np.random.choice(all_actions)
-
-
-def _run(env, policy):
+def _run(env, Q, eps_params=None):
     
      env.reset()
      episode = []
+     
+     eps = 0
 
      while True:
         
-        init_state = env.env.s
-
-        # Select the action
-        action = _sel_action(policy[init_state], list(range(env.action_space.n-1)))
+        state = env.env.s
+        
+        # If epsilon greedy params is defined
+        if eps_params is not None:
+            
+            n0, n = eps_params
+            
+            # Define the epsilon
+            eps = n0/(n0 + n[state])
+    
+        # Select the action prob
+        p = np.random.random()
+        
+        # epsilon-greedy for exploration vs exploitation
+        if p < (1 - eps):
+            action = _argmax(Q[state])
+        else:
+            action = np.random.choice(env.action_space.n)
                 
         # Run the action
-        state, reward, done, _ = env.step(action)
+        _, reward, done, _ = env.step(action)
         
         # Add step to the episode
-        episode.append([init_state, action, reward])
+        episode.append([state, action, reward])
         
         if done:
             break
@@ -105,26 +135,25 @@ def _run(env, policy):
      return episode
 
 
-def _learn_mc(env, episodes=100, gamma=0.99):
-
-    # Create an arbitrary policy
-    policy = [random.randint(0, env.action_space.n-1) for _ in range(env.observation_space.n)]
+def _learn_mc(env, episodes, gamma, n0):
     
     # Initialize state-action
     Q = [[0 for _ in range(env.action_space.n)] for _ in range(env.observation_space.n)]
+        
+    # Number of visits for each state
+    n = {s:0 for s in range(env.observation_space.n)}
     
-    # Create the returns based on state-action pairs
-    returns = {(s, a):[] for s in range(env.observation_space.n) for a in range(env.action_space.n)}
+    # Number of action's selections for state
+    na = {(s, a):0 for s in range(env.observation_space.n) for a in range(env.action_space.n)}
     
-    deltas = []
+    stats = {'return':[], 'V*':[]}
 
     for t in tqdm(range(episodes)):
         
         G = 0
-        biggest_change = 0
         
         # Run an episode
-        episode = _run(env, policy)
+        episode = _run(env, Q, eps_params=(n0, n))
                 
         for i in reversed(range(len(episode))): 
             
@@ -135,28 +164,24 @@ def _learn_mc(env, episodes=100, gamma=0.99):
             G = gamma*G + r_t
             
             if not state_action in [(x[0], x[1]) for x in episode[0:i]]:
-
-                # Add return to the state/action
-                returns[state_action].append(G)
                 
-                old_q = Q[s_t][a_t]
-            
-                # Average reward across episodes
-                Q[s_t][a_t] = sum(returns[state_action]) / len(returns[state_action]) 
+                # Increment the state visits
+                n[s_t] = n[s_t] + 1
                 
-                biggest_change = max(biggest_change, abs(old_q - Q[s_t][a_t]))
+                # Increment the action selection
+                na[state_action] = na[state_action] + 1
             
-                # Update the policy
-                policy[s_t] = _argmax(Q[s_t])
+                # Compute the alpha
+                alpha = 1/na[state_action]
+            
+                # Update the action-value
+                Q[s_t][a_t] = Q[s_t][a_t] + alpha*(G - Q[s_t][a_t])
+                
                         
-        deltas.append(biggest_change)
-        
-    V = []
-    
-    for q in Q:
-        V.append(max(q))
+        stats['return'].append(G)
+        stats['V*'].append(np.amax(Q))
 
-    return policy, V, (deltas)
+    return Q, stats
 
 
 def main():
@@ -164,21 +189,84 @@ def main():
     env = gym.make('FrozenLake8x8-v1', is_slippery=False)
     
     # Learn a policy with MC
-    policy, V, stats = _learn_mc(env, episodes=20000)
+    Q, stats = _learn_mc(env, episodes=10000, gamma=0.9, n0=10)
 
     env.render()
         
-    print_values(V)
-    print_policy(policy)
-    print_stats(env, policy)
+    print_values(Q)
+    print_policy(Q)
+    print(generate_stats(env, Q))
     
-    # Plot the learning
-    plt.plot(stats)
-    plt.show()
+    # Plot stats
+    plot_episode_return(stats['return'])
+    plot_V(stats['V*'])
     
+
+def report():
+    
+    conf = [{'n0': 0.1, 'gamma': 0.9, 'episodes': 1000},
+            {'n0': 0.1, 'gamma': 0.9, 'episodes': 10000},
+            {'n0': 0.1, 'gamma': 0.5, 'episodes': 1000},
+            {'n0': 0.1, 'gamma': 0.5, 'episodes': 10000},
+            {'n0': 0.1, 'gamma': 0.1, 'episodes': 1000},
+            {'n0': 0.1, 'gamma': 0.1, 'episodes': 10000},
+            {'n0': 1, 'gamma': 0.9, 'episodes': 1000},
+            {'n0': 1, 'gamma': 0.9, 'episodes': 10000},
+            {'n0': 1, 'gamma': 0.5, 'episodes': 1000},
+            {'n0': 1, 'gamma': 0.5, 'episodes': 10000},
+            {'n0': 1, 'gamma': 0.1, 'episodes': 1000},
+            {'n0': 1, 'gamma': 0.1, 'episodes': 10000},
+            {'n0': 10, 'gamma': 0.9, 'episodes': 1000},
+            {'n0': 10, 'gamma': 0.9, 'episodes': 10000},
+            {'n0': 10, 'gamma': 0.5, 'episodes': 1000},
+            {'n0': 10, 'gamma': 0.5, 'episodes': 10000},
+            {'n0': 10, 'gamma': 0.1, 'episodes': 1000},
+            {'n0': 10, 'gamma': 0.1, 'episodes': 10000},
+            {'n0': 100, 'gamma': 0.9, 'episodes': 1000},
+            {'n0': 100, 'gamma': 0.9, 'episodes': 10000},
+            {'n0': 100, 'gamma': 0.5, 'episodes': 1000},
+            {'n0': 100, 'gamma': 0.5, 'episodes': 10000},
+            {'n0': 100, 'gamma': 0.1, 'episodes': 1000},
+            {'n0': 100, 'gamma': 0.1, 'episodes': 10000}]
+    
+    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
+    
+    results = pandas.DataFrame(columns=['n0', 'gamma', 'episodes', 'win/loss (%)', 'elapsed time (s)'])
+    
+    Q_array = []
+    stats_array = []
+    
+    for c in conf:
+
+        tic = time.time()
+
+        # Learn policy
+        Q, stats = _learn_mc(env, **c)
+        
+        Q_array.append(Q)
+        stats_array.append(stats)
+        
+        toc = time.time()
+        
+        elapsed_time = toc - tic
+        
+        # Generate wins
+        win = generate_stats(env, Q)*100
+        
+        new_row = {'n0': c['n0'],
+                   'gamma': c['gamma'],
+                   'episodes': c['episodes'],
+                   'win/loss (%)': win,
+                   'elapsed time (s)': elapsed_time} 
+        
+        results = results.append(new_row, ignore_index=True)
+        
+    print(results)
 
 if __name__ == '__main__':
     
-   main()
+    #report()
+
+    main()
    
    
