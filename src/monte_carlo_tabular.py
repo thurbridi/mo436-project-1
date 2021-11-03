@@ -5,9 +5,12 @@ import time
 import pandas
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from sklearn.model_selection import ParameterGrid
+np.random.seed(42)
+random.seed(42)
 
  
-def print_values(Q, size=8):
+def print_state_values_tabular(Q, size=8):
 
     # Get the max value for state
     V = [max(q_s) for q_s in Q]
@@ -33,7 +36,7 @@ def print_values(Q, size=8):
     print("------------------------------------------------")
 
 
-def print_policy(Q, size=8):
+def print_policy_tabular(Q, size=8):
     
     actions_names = ['l', 's', 'r', 'n']
     
@@ -70,19 +73,16 @@ def generate_stats(env, Q):
     
     return wins/r
     
+
+def play(env, Q):
+    
+    _run(env, Q, display=True)
+    
     
 def plot_episode_return(data):
     
     plt.xlabel("Episode")
     plt.ylabel("Cummulative Reward")
-    plt.plot(data)
-    plt.show()
-    
-    
-def plot_V(data):
-    
-    plt.xlabel("Episode")
-    plt.ylabel("V*")
     plt.plot(data)
     plt.show()
     
@@ -95,12 +95,15 @@ def _argmax(Q):
     return random.choice(actions)
                 
 
-def _run(env, Q, eps_params=None):
+def _run(env, Q, eps_params=None, display=False):
     
      env.reset()
      episode = []
      
      eps = 0
+     
+     if display:
+        env.render()
 
      while True:
         
@@ -129,13 +132,16 @@ def _run(env, Q, eps_params=None):
         # Add step to the episode
         episode.append([state, action, reward])
         
+        if display:
+            env.render()
+        
         if done:
             break
           
      return episode
 
 
-def _learn_mc(env, episodes, gamma, n0):
+def _learn_mc_tabular(env, episodes, gamma, n0, disable_tqdm=False):
     
     # Initialize state-action
     Q = [[0 for _ in range(env.action_space.n)] for _ in range(env.observation_space.n)]
@@ -146,9 +152,9 @@ def _learn_mc(env, episodes, gamma, n0):
     # Number of action's selections for state
     na = {(s, a):0 for s in range(env.observation_space.n) for a in range(env.action_space.n)}
     
-    stats = {'return':[], 'V*':[]}
+    stats = {'return':[]}
 
-    for t in tqdm(range(episodes)):
+    for t in tqdm(range(episodes), disable=disable_tqdm):
         
         G = 0
         
@@ -177,75 +183,53 @@ def _learn_mc(env, episodes, gamma, n0):
                 # Update the action-value
                 Q[s_t][a_t] = Q[s_t][a_t] + alpha*(G - Q[s_t][a_t])
                 
-                        
-        stats['return'].append(G)
-        stats['V*'].append(np.amax(Q))
+            if i == len(episode)-1:
+                stats['return'].append(G)
 
     return Q, stats
 
 
-def main():
+def train_tabular(stochastic, episodes=10000, gamma=0.9, n0=10):
     
-    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
+    env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
+    
+    # Reset the seed
+    np.random.seed(42)
+    random.seed(42)
+    env.seed(42)
     
     # Learn a policy with MC
-    Q, stats = _learn_mc(env, episodes=10000, gamma=0.9, n0=10)
-
-    env.render()
+    Q, stats = _learn_mc_tabular(env, episodes=episodes, gamma=gamma, n0=n0, disable_tqdm=True)
         
-    print_values(Q)
-    print_policy(Q)
-    print(generate_stats(env, Q))
-    
     # Plot stats
     plot_episode_return(stats['return'])
-    plot_V(stats['V*'])
+    
+    return Q, env
     
 
-def report():
+def grid_search_tabular(stochastic):
     
-    conf = [{'n0': 0.1, 'gamma': 0.9, 'episodes': 1000},
-            {'n0': 0.1, 'gamma': 0.9, 'episodes': 10000},
-            {'n0': 0.1, 'gamma': 0.5, 'episodes': 1000},
-            {'n0': 0.1, 'gamma': 0.5, 'episodes': 10000},
-            {'n0': 0.1, 'gamma': 0.1, 'episodes': 1000},
-            {'n0': 0.1, 'gamma': 0.1, 'episodes': 10000},
-            {'n0': 1, 'gamma': 0.9, 'episodes': 1000},
-            {'n0': 1, 'gamma': 0.9, 'episodes': 10000},
-            {'n0': 1, 'gamma': 0.5, 'episodes': 1000},
-            {'n0': 1, 'gamma': 0.5, 'episodes': 10000},
-            {'n0': 1, 'gamma': 0.1, 'episodes': 1000},
-            {'n0': 1, 'gamma': 0.1, 'episodes': 10000},
-            {'n0': 10, 'gamma': 0.9, 'episodes': 1000},
-            {'n0': 10, 'gamma': 0.9, 'episodes': 10000},
-            {'n0': 10, 'gamma': 0.5, 'episodes': 1000},
-            {'n0': 10, 'gamma': 0.5, 'episodes': 10000},
-            {'n0': 10, 'gamma': 0.1, 'episodes': 1000},
-            {'n0': 10, 'gamma': 0.1, 'episodes': 10000},
-            {'n0': 100, 'gamma': 0.9, 'episodes': 1000},
-            {'n0': 100, 'gamma': 0.9, 'episodes': 10000},
-            {'n0': 100, 'gamma': 0.5, 'episodes': 1000},
-            {'n0': 100, 'gamma': 0.5, 'episodes': 10000},
-            {'n0': 100, 'gamma': 0.1, 'episodes': 1000},
-            {'n0': 100, 'gamma': 0.1, 'episodes': 10000}]
-    
-    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
-    
+    if stochastic:
+        param_grid = {'n0': [1, 100, 1000, 10000], 'gamma': [1, 0.9, 0.1], 'episodes': [10000, 100000]}
+    else:
+        param_grid = {'n0': [0.1, 1, 10], 'gamma': [1, 0.9, 0.5, 0.1], 'episodes': [100, 1000]}
+            
+    env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
+
     results = pandas.DataFrame(columns=['n0', 'gamma', 'episodes', 'win/loss (%)', 'elapsed time (s)'])
-    
-    Q_array = []
-    stats_array = []
-    
-    for c in conf:
+        
+    for c in ParameterGrid(param_grid):
+        
+        # Reset the seed
+        np.random.seed(42)
+        random.seed(42)
+        env.seed(42)
 
         tic = time.time()
 
         # Learn policy
-        Q, stats = _learn_mc(env, **c)
-        
-        Q_array.append(Q)
-        stats_array.append(stats)
-        
+        Q, stats = _learn_mc_tabular(env, **c, disable_tqdm=True)
+                
         toc = time.time()
         
         elapsed_time = toc - tic
@@ -264,9 +248,12 @@ def report():
     print(results)
 
 if __name__ == '__main__':
-    
-    #report()
 
-    main()
-   
+    Q, env = train_tabular(stochastic=True, episodes=100000, gamma=1, n0=1000)
+    
+    play(env, Q)
+    
+    #print_state_values_tabular(Q)
+    
+    #print(generate_stats(env, Q)*100)
    
