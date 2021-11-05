@@ -2,10 +2,13 @@ import gym
 import numpy as np
 import sys
 import time
+import pandas
+import random
 import pickle
 import itertools
 from collections import defaultdict
 import matplotlib.pyplot as plt
+from sklearn.model_selection import ParameterGrid
 #from utils import plotting
 
 
@@ -31,6 +34,7 @@ def sarsa_lambda(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
 
     stats = np.zeros(episodes)
     rewards = [0.0]
+    win_ = False
 
     for episode in range(episodes):
         aux = 0
@@ -63,22 +67,110 @@ def sarsa_lambda(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
 
             if done:
                 if reward == 1:
-                    print("episode, aux", episode, aux, reward)
-                    env.render()
+                    win_ = True
                 break
 
             state = next_state
             action = next_action
 
-    return Q, stats
+    return Q, E, stats, win_
+
+def generate_stats_sarsa(env, Q_, E_, episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
+                 epsilon=0.1, type='accumulate', display=True):
+    number_actions = env.nA
+    #Initialize Q(s,a) with 0
+    Q = Q_
+
+    #Initialize Trace
+    E = E_
+    aux = 0
+    policy = greedy_policy(Q, epsilon, number_actions)
+
+    stats = np.zeros(episodes)
+    rewards = [0.0]
+    win_ = 0
+
+    for episode in range(100):
+        aux = 0
+        state = env.reset() #Always state=0
+        action_probs = policy(state)
+        action = np.random.choice(np.arange(len(action_probs)), p=action_probs)
+
+        for t in itertools.count():
+            aux += 1
+            next_state, reward, done, _ = env.step(action)
+            next_action_probs = policy(next_state)
+            next_action = np.random.choice(np.arange(len(next_action_probs)), p=next_action_probs)
+
+            if done:
+                if reward == 1:
+                    win_ += 1
+                break
+
+            if display:
+                env.render()
+
+            state = next_state
+            action = next_action
+
+    return win_/100
+
+
+def report_sarsa(stochastic):
+    if stochastic:
+        param_ = {'type': ['accumulate', 'replace'], 'epsilon': [0.01, 0.05, 0.1], 'alpha': [0.01], 'discount': [1.0, 0.99, 0.9], 'trace_decay': [0.9], 'episodes': [5000, 1000]}
+    else:
+        param_ = {'type': ['accumulate', 'replace'], 'epsilon': [0.01, 0.05, 0.1], 'alpha': [0.01], 'discount': [1.0, 0.99, 0.9], 'trace_decay': [0.9], 'episodes': [5000, 1000]}
+
+    env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
+
+    results = pandas.DataFrame(columns=['type', 'epsilon', 'alpha', 'discount', 'trace_decay', 'episodes', 'win/loss (%)', 'elapsed time (s)'])
+
+    for c in ParameterGrid(param_):
+        print(c)
+        # Reset the seed
+        np.random.seed(42)
+        random.seed(42)
+        env.seed(42)
+
+        tic = time.time()
+
+        # Learn policy
+        Q, E, stats, _ = sarsa_lambda(env, c['episodes'], c['discount'], c['alpha'], c['trace_decay'], c['epsilon'], c['type'])
+
+        toc = time.time()
+
+        elapsed_time = toc - tic
+
+        # Generate wins
+        win = generate_stats_sarsa(env, Q, E, c['episodes'], c['discount'], c['alpha'], c['trace_decay'], c['epsilon'], c['type'], False)*100
+
+        new_row = {'type':    c['type'],
+                   'epsilon': c['epsilon'],
+                   'alpha':   c['alpha'],
+                   'discount':c['discount'],
+                   'trace_decay': c['trace_decay'],
+                   'episodes':c['episodes'],
+                   'win/loss (%)': win,
+                   'elapsed time (s)': elapsed_time}
+
+        results = results.append(new_row, ignore_index=True)
+
+    return results
 
 if __name__ == '__main__':
-    start = time.time()
-    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
+    report = report_sarsa(False)
+    print(report)
+    #start = time.time()
+    #env = gym.make('FrozenLake8x8-v1', is_slippery=False)
 
-    Q, stats = sarsa_lambda(env, 1000)
-    end = time.time()
-    print("Algorithm took: ", end-start)
+    #Q, E, stats, _  = sarsa_lambda(env, 1000)
+    #end = time.time()
+    #print("Algorithm took: ", end-start)
 
-    plt.plot(stats)
-    plt.show()
+    #w_ = generate_stats(env, Q, E)
+
+
+    #plt.plot(stats)
+    #plt.show()
+    #print(Q)
