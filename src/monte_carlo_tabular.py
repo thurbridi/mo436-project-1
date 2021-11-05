@@ -82,7 +82,7 @@ def play(env, Q):
 def plot_episode_return(data):
     
     plt.xlabel("Episode")
-    plt.ylabel("Cummulative Reward")
+    plt.ylabel("Cumulative Reward")
     plt.plot(data)
     plt.show()
     

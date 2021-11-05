@@ -1,16 +1,15 @@
 import gym
 import numpy as np
-import random
 import time
 import pandas
-from sklearn.pipeline import FeatureUnion
 from sklearn.preprocessing import StandardScaler
 from sklearn.kernel_approximation import RBFSampler
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from sklearn.model_selection import ParameterGrid
 
- 
-def print_values(env, Q, size=8):
+
+def print_state_values_approximator(env, Q, size=8):
     
     x, w = Q
     
@@ -24,8 +23,8 @@ def print_values(env, Q, size=8):
         for _ in range(size):
             
             # Get the max value for state
-            q = np.asarray([np.dot(w, x(s, a)[0]) for a in range(env.action_space.n)])
-                    
+            q = np.asarray([np.dot(w, x(s, a)) for a in range(env.action_space.n)])
+            
             v = np.max(q)
             
             if v >= 0:
@@ -40,7 +39,7 @@ def print_values(env, Q, size=8):
     print("------------------------------------------------")
 
 
-def print_policy(env, Q, size=8):
+def print_policy_approximator(env, Q, size=8):
     
     x, w = Q
     
@@ -56,7 +55,7 @@ def print_policy(env, Q, size=8):
         for _ in range(size):
             
             # Get the max value for state
-            q = np.asarray([np.dot(w, x(s, a)[0]) for a in range(env.action_space.n)])
+            q = np.asarray([np.dot(w, x(s, a)) for a in range(env.action_space.n)])
                    
             # Get the best action
             best_action = np.argmax(q)
@@ -72,12 +71,16 @@ def print_policy(env, Q, size=8):
 def generate_stats(env, Q):
     
     x, w = Q
-    
+        
     wins = 0
     r = 100
     for i in range(r):
-                
-        if _run(env, x, w, eps=0)[-1][-1] == 1:
+           
+        e, reward_array = _run(env, x, w, eps=0)
+        
+        #print(e)
+           
+        if reward_array[-1] == 1:
             wins += 1
     
     return wins/r
@@ -86,41 +89,12 @@ def generate_stats(env, Q):
 def plot_episode_return(data):
     
     plt.xlabel("Episode")
-    plt.ylabel("Cummulative Reward")
+    plt.ylabel("Cumulative Reward")
     plt.plot(data)
     plt.show()
-    
-    
-def plot_V(data):
-    
-    plt.xlabel("Episode")
-    plt.ylabel("V*")
-    plt.plot(data)
-    plt.show()
+                    
 
-
-def _generate_feature_repr(env):
-    
-    # Create the scaler and feature represention
-    scaler = StandardScaler()
-    
-    #featurizer = FeatureUnion([
-            #("rbf1", RBFSampler(gamma=2.0, n_components=10)),
-            #("rbf2", RBFSampler(gamma=0.5, n_components=10))
-    #])
-    
-    featurizer = RBFSampler(gamma=1, n_components=100)
-    
-    # Generate the observations
-    observations = np.asarray([(env.observation_space.sample(), env.action_space.sample()) for x in range(30000)])
-        
-    scaler.fit(observations)
-    featurizer.fit(scaler.transform(observations))
-    
-    return lambda state_action: featurizer.transform(scaler.transform(np.asarray(state_action)))
-                
-
-def _run(env, x, w, eps=0.2):
+def _run(env, x, w, eps):
     
      env.reset()
      episode = []
@@ -136,18 +110,19 @@ def _run(env, x, w, eps=0.2):
         # epsilon-greedy for exploration vs exploitation
         if p < (1 - eps):
                         
-            q = np.asarray([np.dot(w, x(state, a)[0]) for a in range(env.action_space.n)])
-            
-            action = np.argmax(q)
+            q = np.asarray([np.dot(w, x(state, a)) for a in range(env.action_space.n)])
+                        
+            action = np.random.choice(np.argwhere(q == np.max(q)).ravel())
             
         else:
             action = np.random.choice(env.action_space.n)
-                            
+       
+            
         # Run the action
         _, reward, done, _ = env.step(action)
         
-        # Add step to the episode
-        episode.append([state, action, reward])
+        # Add step and reward
+        episode.append([state, action])
         reward_array.append(reward)
                 
         if done:
@@ -156,70 +131,57 @@ def _run(env, x, w, eps=0.2):
      return episode, reward_array
 
 
-def _learn_mc_approximator(env, episodes, gamma, alpha):
-        
-    # Generate the feature representation
-    def x(state, action):
-        
-        features = np.array([[state+1, action+1]]) #, (state+1)*(action+1), ((state+1)**2)*(action+1), (state+1)*((action+1)**2)
-        
-        #norm = features/np.linalg.norm(features)
-        
-        return features
+def _learn_mc_approximator(env, episodes, gamma, alpha, disable_tqdm=False):
+
+    featurizer = RBFSampler(gamma=1, random_state=1)
+    scaler = StandardScaler()
+
+    # Collect observations
+    X = np.asarray([[np.random.randint(0, 64), np.random.randint(0, 4)] for x in range(30000)])
     
+    # Fit the feature function vector
+    scaler.fit(X)
+    featurizer.fit(scaler.transform(X))
+    
+    # Generate the feature funtion
+    x = lambda state, action: featurizer.transform(scaler.transform(np.asarray([[state, action]])))[0]
+                        
     # Get the feature vector shape
-    _, m = x(0, 0).shape
+    m = x(0, 0).shape
     
     # Initialize weight vector
-    w = np.random.rand(m)
+    w = np.zeros(m[0])
                 
-    stats = {'return':[], 'V*':[]}
+    stats = {'return':[], 'cumGTrain':0}
 
     tic = time.time()
     
-    with tqdm(total=episodes) as pbar:
+    with tqdm(total=episodes, disable=disable_tqdm) as pbar:
+        
+        G = 0
+        sumG = 0
         
         for t in range(episodes):
             
-            eps = (episodes / (episodes + t))
-            alpha = (episodes//100 / (episodes + t))
-            gamma = 1 #(episodes//10 + 0.95 * t) / (episodes//2 + t)
-        
-            G = 0
-            
-            # Run an episode
-            #episode = _run(env, x, w, eps=eps)
-                    
-            #for s_t, a_t, r_t in reversed(episode): 
-                                                        
-                #Cummulative discounted rewards
-                #G = gamma*G + r_t
-                    
-                #Generate the action-value representation
-                #x_s = x(s_t, a_t)[0]
-                                   
-                #Compute the weight delta
-                #w_delta = alpha*(G - np.dot(w, x_s))*x_s                                   
-                            
-                #Normalize w delta
-                #w_delta = np.minimum(np.maximum(w_delta, -1e+5), 1e+5)
-                                        
-                #Update the action-value weights
-                #w = w + w_delta
-                
+            eps = episodes / (episodes + 5*t)
+            #alpha = episodes//10 / (episodes + 10*t)
+            #gamma = 0.99
+                   
             episode, rewards = _run(env, x, w, eps=eps)
-            for i, state in enumerate(episode):
+            
+            for i, state_action in enumerate(episode):
                 
-                s_t, a_t, _ = state
+                s_t, a_t = state_action
                 
-                x_s = x(s_t, a_t)[0]
+                x_s = x(s_t, a_t)
+                                
+                #if i + 1 >= len(rewards):
+                #    break
                 
-                if i + 1 >= len(rewards):
-                    break
+                G = rewards[-1] #np.dot(np.array(rewards[i + 1:]), np.fromfunction(lambda i: gamma ** i, (len(rewards) - i - 1, )))
+                sumG += G
                 
-                G = np.dot(np.array(rewards[i + 1:]), np.fromfunction(lambda i: gamma ** i, (len(rewards) - i - 1, )))
                 w_delta = (G - np.dot(w, x_s)) * x_s
-                
                 w_delta = np.minimum(np.maximum(w_delta, -1e+5), 1e+5)
                 
                 w += alpha*w_delta
@@ -228,78 +190,55 @@ def _learn_mc_approximator(env, episodes, gamma, alpha):
         
             toc = time.time()
                     
-            pbar.set_description(("{:.1f}s - alpha: {:.6f}, gamma: {:.6f}, epsilon: {:.6f}".format((toc-tic), alpha, gamma, eps)))
+            pbar.set_description(("{:.1f}s - sumG: {:.6f}, alpha: {:.6f}, gamma: {:.6f}, eps: {:.6f}".format((toc-tic), sumG, alpha, gamma, eps)))
                     
             # Update the bar
             pbar.update(1)
             
-    print(w)
-       
+        stats['cumGTrain'] = sumG
+    
     return (x, w), stats
 
 
-def main():
+def train_approximator(stochastic, episodes=10000, gamma=1, alpha=0.001):
     
-    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
+    env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
+    
+    # Reset the seed
+    np.random.seed(2)
+    env.seed(2)
     
     # Learn a policy with MC
-    Q, stats = _learn_mc_approximator(env, episodes=30000, gamma=1, alpha=0.001)
-
-    env.render()
-        
-    print_values(env, Q)
-    print_policy(env, Q)
-    print(generate_stats(env, Q))
+    Q, stats = _learn_mc_approximator(env, episodes=episodes, gamma=gamma, alpha=alpha, disable_tqdm=False)
     
     # Plot stats
     plot_episode_return(stats['return'])
-    #plot_V(stats['V*'])
+    
+    return Q, env
     
 
-def report():
+def grid_search_approximator(stochastic):
     
-    conf = [{'n0': 0.1, 'gamma': 0.9, 'episodes': 1000},
-            {'n0': 0.1, 'gamma': 0.9, 'episodes': 10000},
-            {'n0': 0.1, 'gamma': 0.5, 'episodes': 1000},
-            {'n0': 0.1, 'gamma': 0.5, 'episodes': 10000},
-            {'n0': 0.1, 'gamma': 0.1, 'episodes': 1000},
-            {'n0': 0.1, 'gamma': 0.1, 'episodes': 10000},
-            {'n0': 1, 'gamma': 0.9, 'episodes': 1000},
-            {'n0': 1, 'gamma': 0.9, 'episodes': 10000},
-            {'n0': 1, 'gamma': 0.5, 'episodes': 1000},
-            {'n0': 1, 'gamma': 0.5, 'episodes': 10000},
-            {'n0': 1, 'gamma': 0.1, 'episodes': 1000},
-            {'n0': 1, 'gamma': 0.1, 'episodes': 10000},
-            {'n0': 10, 'gamma': 0.9, 'episodes': 1000},
-            {'n0': 10, 'gamma': 0.9, 'episodes': 10000},
-            {'n0': 10, 'gamma': 0.5, 'episodes': 1000},
-            {'n0': 10, 'gamma': 0.5, 'episodes': 10000},
-            {'n0': 10, 'gamma': 0.1, 'episodes': 1000},
-            {'n0': 10, 'gamma': 0.1, 'episodes': 10000},
-            {'n0': 100, 'gamma': 0.9, 'episodes': 1000},
-            {'n0': 100, 'gamma': 0.9, 'episodes': 10000},
-            {'n0': 100, 'gamma': 0.5, 'episodes': 1000},
-            {'n0': 100, 'gamma': 0.5, 'episodes': 10000},
-            {'n0': 100, 'gamma': 0.1, 'episodes': 1000},
-            {'n0': 100, 'gamma': 0.1, 'episodes': 10000}]
+    if stochastic:
+        param_grid = {'n0': [1, 100, 1000, 10000], 'gamma': [1, 0.9, 0.1], 'episodes': [10000, 100000]}
+    else:
+        param_grid = {'alpha': [0.1, 0.0005], 'gamma': [1], 'episodes': [1000]}
     
-    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
+    env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
     
-    results = pandas.DataFrame(columns=['n0', 'gamma', 'episodes', 'win/loss (%)', 'elapsed time (s)'])
+    results = pandas.DataFrame(columns=['alpha', 'gamma', 'episodes', 'Total G Train', 'win/loss (%)', 'elapsed time (s)'])
     
-    Q_array = []
-    stats_array = []
-    
-    for c in conf:
+    for c in ParameterGrid(param_grid):
+        
+        # Reset the seed
+        np.random.seed(412)
+        env.seed(412)
 
         tic = time.time()
 
         # Learn policy
-        Q, stats = _learn_mc_tabular(env, **c)
-        
-        Q_array.append(Q)
-        stats_array.append(stats)
-        
+        Q, stats = _learn_mc_approximator(env, **c, disable_tqdm=True)
+
         toc = time.time()
         
         elapsed_time = toc - tic
@@ -307,9 +246,10 @@ def report():
         # Generate wins
         win = generate_stats(env, Q)*100
         
-        new_row = {'n0': c['n0'],
+        new_row = {'alpha': c['alpha'],
                    'gamma': c['gamma'],
                    'episodes': c['episodes'],
+                   'Total G Train': stats['cumGTrain'],
                    'win/loss (%)': win,
                    'elapsed time (s)': elapsed_time} 
         
@@ -319,8 +259,7 @@ def report():
 
 if __name__ == '__main__':
     
-    #report()
-
-    main()
+    #grid_search_approximator(stochastic=False)
+    train_approximator(stochastic=False)
    
    
