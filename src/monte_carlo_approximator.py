@@ -23,7 +23,7 @@ def print_state_values_approximator(env, Q, size=8):
         for _ in range(size):
             
             # Get the max value for state
-            q = np.asarray([np.dot(w, x(s, a)) for a in range(env.action_space.n)])
+            q = np.asarray([np.dot(w, x((s, a))) for a in range(env.action_space.n)])
             
             v = np.max(q)
             
@@ -55,7 +55,7 @@ def print_policy_approximator(env, Q, size=8):
         for _ in range(size):
             
             # Get the max value for state
-            q = np.asarray([np.dot(w, x(s, a)) for a in range(env.action_space.n)])
+            q = np.asarray([np.dot(w, x((s, a))) for a in range(env.action_space.n)])
                    
             # Get the best action
             best_action = np.argmax(q)
@@ -76,7 +76,7 @@ def generate_stats(env, Q):
     r = 100
     for i in range(r):
            
-        e, reward_array = _run(env, x, w, eps=0)
+        e, reward_array = _run(env, x, w, eps=0.1)
         
         #print(e)
            
@@ -110,7 +110,7 @@ def _run(env, x, w, eps):
         # epsilon-greedy for exploration vs exploitation
         if p < (1 - eps):
                         
-            q = np.asarray([np.dot(w, x(state, a)) for a in range(env.action_space.n)])
+            q = np.asarray([np.dot(w, x((state, a))) for a in range(env.action_space.n)])
                         
             action = np.random.choice(np.argwhere(q == np.max(q)).ravel())
             
@@ -122,7 +122,7 @@ def _run(env, x, w, eps):
         _, reward, done, _ = env.step(action)
         
         # Add step and reward
-        episode.append([state, action])
+        episode.append((state, action))
         reward_array.append(reward)
                 
         if done:
@@ -144,10 +144,10 @@ def _learn_mc_approximator(env, episodes, gamma, alpha, disable_tqdm=False):
     featurizer.fit(scaler.transform(X))
     
     # Generate the feature funtion
-    x = lambda state, action: featurizer.transform(scaler.transform(np.asarray([[state, action]])))[0]
+    x = lambda state_action: featurizer.transform(scaler.transform(np.asarray([state_action])))[0]
                         
     # Get the feature vector shape
-    m = x(0, 0).shape
+    m = x((0, 0)).shape
     
     # Initialize weight vector
     w = np.zeros(m[0])
@@ -165,20 +165,14 @@ def _learn_mc_approximator(env, episodes, gamma, alpha, disable_tqdm=False):
             
             eps = episodes / (episodes + 5*t)
             #alpha = episodes//10 / (episodes + 10*t)
-            #gamma = 0.99
                    
             episode, rewards = _run(env, x, w, eps=eps)
             
             for i, state_action in enumerate(episode):
+
+                x_s = x(state_action)
                 
-                s_t, a_t = state_action
-                
-                x_s = x(s_t, a_t)
-                                
-                #if i + 1 >= len(rewards):
-                #    break
-                
-                G = rewards[-1] #np.dot(np.array(rewards[i + 1:]), np.fromfunction(lambda i: gamma ** i, (len(rewards) - i - 1, )))
+                G = np.dot(np.array(rewards[i:]), np.fromfunction(lambda i: gamma ** i, (len(rewards) - i , )))
                 sumG += G
                 
                 w_delta = (G - np.dot(w, x_s)) * x_s
@@ -209,7 +203,7 @@ def train_approximator(stochastic, episodes=10000, gamma=1, alpha=0.001):
     env.seed(2)
     
     # Learn a policy with MC
-    Q, stats = _learn_mc_approximator(env, episodes=episodes, gamma=gamma, alpha=alpha, disable_tqdm=False)
+    Q, stats = _learn_mc_approximator(env, episodes=episodes, gamma=gamma, alpha=alpha, disable_tqdm=True)
     
     # Plot stats
     plot_episode_return(stats['return'])
@@ -220,9 +214,9 @@ def train_approximator(stochastic, episodes=10000, gamma=1, alpha=0.001):
 def grid_search_approximator(stochastic):
     
     if stochastic:
-        param_grid = {'n0': [1, 100, 1000, 10000], 'gamma': [1, 0.9, 0.1], 'episodes': [10000, 100000]}
+        param_grid = {'alpha': [0.1, 0.001, 0.0005], 'gamma': [1, 0.9, 0.1], 'episodes': [1000, 10000]}
     else:
-        param_grid = {'alpha': [0.1, 0.0005], 'gamma': [1], 'episodes': [1000]}
+        param_grid = {'alpha': [0.1, 0.001, 0.0005], 'gamma': [1, 0.9, 0.1], 'episodes': [1000, 10000]}
     
     env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
     
@@ -259,7 +253,7 @@ def grid_search_approximator(stochastic):
 
 if __name__ == '__main__':
     
-    #grid_search_approximator(stochastic=False)
-    train_approximator(stochastic=False)
+    grid_search_approximator(stochastic=False)
+    #train_approximator(stochastic=False)
    
    
