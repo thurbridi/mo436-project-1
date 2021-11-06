@@ -3,16 +3,25 @@ import numpy as np
 import time
 import itertools
 import matplotlib.pyplot as plt
-#from utils import plotting
+# from utils import plotting
 
 
 def feature_function(state, action):
-    if state == 63:
-        return np.zeros(4)
+    row, col = state // 4, state % 4
+    row, col = row / 7, col / 7
 
-    s = state / 63
-    a = action / 3
-    return np.array([1, s, a, s * a])
+    action_features = np.zeros(4, dtype=np.float64)
+    action_features[action] = 1
+
+    features = np.array([1, row, col, row**2, col**2,
+                        row**2 * col**2], dtype='float64')
+
+    features = np.concatenate([features, action_features])
+
+    if state == 63:
+        return np.zeros(features.shape[0])
+
+    return features
 
 
 def linear_regression(x, w):
@@ -35,10 +44,11 @@ def choose_action(s, actions, w, epsilon):
 
 
 def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
+
                         epsilon=0.1):
     number_actions = env.nA
     actions = np.arange(number_actions)
-    n_features = 4
+    n_features = 10
 
     w = np.zeros(n_features)
 
@@ -69,8 +79,8 @@ def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_dec
 
             z = discount * trace_decay * z + \
                 (1 - alpha * discount * trace_decay * np.dot(z, x)) * x
-
             w = w + alpha * (delta + q - q_prev) * z - alpha * (q - q_prev) * x
+            # w = w + alpha * delta * x
 
             q_prev = q_next
             x = x_next
@@ -78,10 +88,13 @@ def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_dec
 
             stats[episode] += reward
 
+            # env.render()
             if done:
-                if reward == 1:
-                    print("episode, aux", episode, aux, reward)
-                    env.render()
+                # if reward == 1:
+
+                # print("episode, aux", episode, aux, reward)
+                # else:
+                # print('Episode ended: agent fell in the lake')
                 break
 
     return w, stats
@@ -92,11 +105,29 @@ if __name__ == '__main__':
     env = gym.make('FrozenLake8x8-v1', is_slippery=False)
 
     w, stats = sarsa_lambda_approx(
-        env, 10000, alpha=0.1, epsilon=0.1)
+        env, 10000, alpha=0.1, epsilon=0.1, discount=0.9, trace_decay=0.9)
 
     end = time.time()
     print("Algorithm took: ", end-start)
 
+    print(w)
+
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+
+    # Make data.
+    X = np.arange(0, 8, 1)
+    Y = np.arange(0, 8, 1)
+    X, Y = np.meshgrid(X, Y)
+
+    states = np.arange(0, 64, 1)
+    for a in range(4):
+        Z = np.array([linear_regression(feature_function(s, a), w)
+                      for s in states])
+        Z = Z.reshape(8, 8)
+
+        # Plot the surface.
+        ax.plot_surface(X, Y, Z, linewidth=0, antialiased=False)
+
+    plt.figure()
     plt.plot(stats)
     plt.show()
-    print(w)
