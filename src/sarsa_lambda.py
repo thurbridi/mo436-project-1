@@ -20,6 +20,35 @@ def greedy_policy(Q, epsilon, numberAct):
         return policy
     return policy_fn
 
+def print_state_values_sarsa(Q, size=8):
+    print("\n\t\t\t State Value")
+
+    print("--------------------------------------------------------")
+    for i in range(size):
+        for j in range(size):
+            k = i*size + j
+            q = np.max(Q[k])
+            if q >= 0:
+                print("  %.2f|" % np.max(Q[k]), end="")
+            else:
+                print(" %.2f|" % np.max(Q[k]), end="")
+        print("\n--------------------------------------------------------")
+
+def print_policy_sarsa(Q, size=8):
+
+    actions_names = ['l', 's', 'r', 'n']
+
+    print("\n\t\t Policy/Actions")
+
+    print("------------------------------------------------")
+    for i in range(size):
+        for j in range(size):
+            k = i*size + j
+            q = np.argmax(Q[k])
+            print("  %s  |" % actions_names[q], end="")
+        print("\n------------------------------------------------")
+
+
 
 def sarsa_lambda(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
                  epsilon=0.1, type='accumulate'):
@@ -118,16 +147,16 @@ def generate_stats_sarsa(env, Q_, E_, episodes=1000, discount=0.9, alpha=0.01, t
 
 def report_sarsa(stochastic):
     if stochastic:
-        param_ = {'type': ['accumulate', 'replace'], 'epsilon': [0.01, 0.05, 0.1], 'alpha': [0.01], 'discount': [1.0, 0.99, 0.9], 'trace_decay': [0.9], 'episodes': [5000, 1000]}
+        param_ = {'type': ['accumulate', 'replace'], 'epsilon': [0.01, 0.05, 0.1], 'alpha': [0.01], 'discount': [1.0, 0.99, 0.9], 'trace_decay': [0.9], 'episodes': [1000, 5000]}
     else:
-        param_ = {'type': ['accumulate', 'replace'], 'epsilon': [0.01, 0.05, 0.1], 'alpha': [0.01], 'discount': [1.0, 0.99, 0.9], 'trace_decay': [0.9], 'episodes': [5000, 1000]}
+        param_ = {'type': ['accumulate', 'replace'], 'epsilon': [0.01, 0.05, 0.1], 'alpha': [0.01], 'discount': [1.0, 0.99, 0.9], 'trace_decay': [0.9], 'episodes': [1000, 5000]}
 
     env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
 
-    results = pandas.DataFrame(columns=['type', 'epsilon', 'alpha', 'discount', 'trace_decay', 'episodes', 'win/loss (%)', 'elapsed time (s)'])
+    results = pandas.DataFrame(columns=['type', 'epsilon', 'alpha', 'gamma', 'lambda', 'episodes', 'win/loss (%)', 'elapsed time (s)'])
 
     for c in ParameterGrid(param_):
-        print(c)
+        #print(c)
         # Reset the seed
         np.random.seed(42)
         random.seed(42)
@@ -148,8 +177,8 @@ def report_sarsa(stochastic):
         new_row = {'type':    c['type'],
                    'epsilon': c['epsilon'],
                    'alpha':   c['alpha'],
-                   'discount':c['discount'],
-                   'trace_decay': c['trace_decay'],
+                   'gamma':c['discount'],
+                   'lambda': c['trace_decay'],
                    'episodes':c['episodes'],
                    'win/loss (%)': win,
                    'elapsed time (s)': elapsed_time}
@@ -159,18 +188,17 @@ def report_sarsa(stochastic):
     return results
 
 if __name__ == '__main__':
-    report = report_sarsa(False)
-    print(report)
+    #report = report_sarsa(False)
+    #print(report)
     #start = time.time()
-    #env = gym.make('FrozenLake8x8-v1', is_slippery=False)
+    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
 
-    #Q, E, stats, _  = sarsa_lambda(env, 1000)
+    Q, E, stats, _  = sarsa_lambda(env, 1000)
     #end = time.time()
     #print("Algorithm took: ", end-start)
 
     #w_ = generate_stats(env, Q, E)
 
 
-    #plt.plot(stats)
-    #plt.show()
-    #print(Q)
+    plt.plot(stats)
+    plt.show()
