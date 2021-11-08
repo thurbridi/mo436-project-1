@@ -1,9 +1,12 @@
 import gym
 import numpy as np
 import time
+import pandas
+import random
 import itertools
 import matplotlib.pyplot as plt
-# from utils import plotting
+from sklearn.model_selection import ParameterGrid
+
 
 action_names = {
     0: 'left',
@@ -77,7 +80,7 @@ def choose_action(s, actions, w, epsilon):
 
 def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
 
-                        epsilon=0.1):
+                        epsilon=0.1, verbose=False):
     number_actions = env.nA
     actions = np.arange(number_actions)
     n_features = 19
@@ -99,7 +102,8 @@ def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_dec
 
         for t in itertools.count():
             if t > 150:
-                print('Early termination: exceeded number of steps')
+                if verbose:
+                    print('Early termination: exceeded number of steps')
                 break
 
             aux += 1
@@ -123,16 +127,98 @@ def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_dec
 
             stats[episode] += reward
 
-            if episode == episodes - 1:
-                env.render()
-                time.sleep(0.1)
+            if verbose:
+                if episode == episodes - 1:
+                    env.render()
+                    time.sleep(0.1)
 
             if done:
-                if reward == 1:
-                    print("episode, aux", episode, aux, reward)
+                if verbose:
+                    if reward == 1:
+                        print("episode, aux", episode, aux, reward)
                 break
 
     return w, stats
+
+
+def generate_stats_sarsa_approx(env, w, episodes=100,
+                                epsilon=0.0, display=False):
+    number_actions = env.nA
+    actions = np.arange(number_actions)
+    win_ = 0
+
+    for episode in range(episodes):
+        aux = 0
+        state = env.reset()  # Always state=0
+        action = choose_action(state, actions, w, epsilon)
+        x = feature_function(state, action)
+
+        for t in itertools.count():
+            aux += 1
+
+            state_next, reward, done, _ = env.step(action)
+            action_next = choose_action(state_next, actions, w, epsilon)
+            x_next = feature_function(state_next, action_next)
+
+            x = x_next
+            action = action_next
+
+            if display:
+                env.render()
+
+            if done:
+                if reward == 1:
+                    win_ += 1
+                break
+
+    return win_/episodes
+
+
+def report_sarsa_approx(stochastic):
+    if stochastic:
+        param_ = {'epsilon': [0.0], 'alpha': [1e-1, 1e-3, 1e-5], 'discount': [
+            1.0], 'trace_decay': [0.0, 0.4, 0.6, 1.0], 'episodes': [1500, 2000]}
+    else:
+        param_ = {'epsilon': [0.01], 'alpha': [1e-1, 1e-3, 1e-5], 'discount': [
+            1.0], 'trace_decay': [0.0, 0.4, 0.6, 1.0], 'episodes': [1500, 2000]}
+
+    env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
+
+    results = pandas.DataFrame(columns=[
+                               'episodes', 'gamma', 'alpha', 'lambda', 'epsilon', 'win/loss (%)', 'elapsed time (s)'])
+
+    for c in ParameterGrid(param_):
+        # print(c)
+        # Reset the seed
+        np.random.seed(42)
+        random.seed(42)
+        env.seed(42)
+
+        tic = time.time()
+
+        # Learn policy
+        w, stats = sarsa_lambda_approx(
+            env, c['episodes'], c['discount'], c['alpha'], c['trace_decay'], c['epsilon'])
+
+        toc = time.time()
+
+        elapsed_time = toc - tic
+
+        # Generate wins
+        win = generate_stats_sarsa_approx(
+            env, w, 100, c['epsilon'], False)*100
+
+        new_row = {'episodes': c['episodes'],
+                   'gamma': c['discount'],
+                   'alpha':   c['alpha'],
+                   'lambda': c['trace_decay'],
+                   'epsilon': c['epsilon'],
+                   'win/loss (%)': win,
+                   'elapsed time (s)': elapsed_time}
+
+        results = results.append(new_row, ignore_index=True)
+
+    return results
 
 
 def plot_action_value(w, grid_shape=(8, 8)):
@@ -153,6 +239,9 @@ def plot_action_value(w, grid_shape=(8, 8)):
         # Plot the surface.
         ax.plot_surface(X, Y, Z, linewidth=0,
                         antialiased=False, label=action_names[a])
+    ax.set_xlabel("Row")
+    ax.set_ylabel("Column")
+    ax.set_zlabel("Q(s,a,w)")
 
     return fig
 
@@ -160,15 +249,20 @@ def plot_action_value(w, grid_shape=(8, 8)):
 if __name__ == '__main__':
     np.random.seed(777)
     start = time.time()
-    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
+    env = gym.make('FrozenLake8x8-v1', is_slippery=True)
 
     w, stats = sarsa_lambda_approx(
-        env, 1000, alpha=1e-5, epsilon=0.1, discount=1, trace_decay=0.4)
+        env, 10000, alpha=1e-5, epsilon=0.0, discount=1.0, trace_decay=0.6)
 
     end = time.time()
+
+    win_ratio = generate_stats_sarsa_approx(env, w)
+
     print("Algorithm took: ", end-start)
 
     print(w)
+
+    print(f'Win ratio: {win_ratio}')
 
     plot_action_value(w)
 
