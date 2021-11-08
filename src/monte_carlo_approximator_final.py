@@ -103,12 +103,14 @@ def plot_episode_return(data):
     plt.show()
                     
 
-def _run(env, x, w, eps, display=False):
+def _run(env, x, w, eps_params=None, display=False):
     
      env.reset()
      episode = []
      reward_array = []
      count = 0
+     
+     eps=0
      
      if display:
         env.render()
@@ -119,6 +121,14 @@ def _run(env, x, w, eps, display=False):
             
         # Select the action prob
         p = np.random.random()
+        
+        # If epsilon greedy params is defined
+        if eps_params is not None:
+            
+            n0, n = eps_params
+            
+            # Define the epsilon
+            eps = n0/(n0 + n[state])
         
         # epsilon-greedy for exploration vs exploitation
         if p < (1 - eps):
@@ -145,13 +155,13 @@ def _run(env, x, w, eps, display=False):
             env.render()
             time.sleep(1)
     
-        if done:
+        if done or count > 100:
             break
           
-     return episode, reward_array
+     return episode, reward_array, eps
 
 
-def _learn_mc_approximator(env, episodes, gamma, alpha, eps, disable_tqdm=True):
+def _learn_mc_approximator(env, episodes, gamma, n0, disable_tqdm=True):
 
     featurizer = FeatureUnion([
        ("rbf2", RBFSampler(gamma=1, n_components=10)),
@@ -181,6 +191,12 @@ def _learn_mc_approximator(env, episodes, gamma, alpha, eps, disable_tqdm=True):
     
     # Initialize weight vector
     w = np.zeros((4, m[0]))
+    
+    # Number of visits for each state
+    n = {s:0 for s in range(env.observation_space.n)}
+    
+    # Number of action's selections for state
+    na = {(s, a):0 for s in range(env.observation_space.n) for a in range(env.action_space.n)}
                     
     stats = {'return':[], 'cumGTrain':0}
 
@@ -193,11 +209,20 @@ def _learn_mc_approximator(env, episodes, gamma, alpha, eps, disable_tqdm=True):
         
         for t in range(episodes):
                    
-            episode, rewards = _run(env, x, w, eps=eps)
+            episode, rewards, eps = _run(env, x, w, eps_params=(n0, n))
             
             for i, state_action in enumerate(episode):
 
                 state, action = state_action
+
+                # Increment the state visits
+                n[state] = n[state] + 1
+                
+                # Increment the action selection
+                na[state_action] = na[state_action] + 1
+                
+                # Compute the alpha
+                alpha = 5/na[state_action]
 
                 x_s = x(state)
                 
@@ -220,7 +245,7 @@ def _learn_mc_approximator(env, episodes, gamma, alpha, eps, disable_tqdm=True):
     return (x, w), stats
 
 
-def train_approximator(stochastic, episodes=10000, gamma=1, alpha=0.001, eps=0.1):
+def train_approximator(stochastic, episodes, gamma, n0):
     
     env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
     
@@ -229,7 +254,7 @@ def train_approximator(stochastic, episodes=10000, gamma=1, alpha=0.001, eps=0.1
     env.seed(2)
     
     # Learn a policy with MC
-    Q, stats = _learn_mc_approximator(env, episodes=episodes, gamma=gamma, alpha=alpha, eps=eps, disable_tqdm=True)
+    Q, stats = _learn_mc_approximator(env, episodes=episodes, gamma=gamma, n0=n0, disable_tqdm=False)
     
     # Plot stats
     plot_episode_return(stats['return'])
@@ -240,7 +265,7 @@ def train_approximator(stochastic, episodes=10000, gamma=1, alpha=0.001, eps=0.1
 def grid_search_approximator(stochastic):
     
     if stochastic:
-        param_grid = {'alpha': [0.01, 0.001], 'gamma': [1, 0.9, 0.1], 'eps':[0.5, 0.1], 'episodes': [10000]}
+        param_grid = {'alpha': [0.1, 0.01, 0.001], 'gamma': [1, 0.9, 0.1], 'eps':[0.9, 0.5, 0.1], 'episodes': [1000]}
     else:
         param_grid = {'alpha': [0.1, 0.01, 0.001], 'gamma': [1, 0.9, 0.1], 'eps':[0.9, 0.5, 0.1], 'episodes': [1000]}
     
@@ -251,8 +276,8 @@ def grid_search_approximator(stochastic):
     for c in ParameterGrid(param_grid):
         
         # Reset the seed
-        np.random.seed(2)
-        env.seed(2)
+        np.random.seed(412)
+        env.seed(412)
 
         tic = time.time()
 
@@ -280,9 +305,10 @@ def grid_search_approximator(stochastic):
 
 if __name__ == '__main__':
     
-    grid_search_approximator(stochastic=True)
-    exit()
-    Q, env = train_approximator(stochastic=False, episodes=3000, gamma=0.9, alpha=0.01)
+    #grid_search_approximator(stochastic=True)
+    #exit()
+    
+    Q, env = train_approximator(stochastic=False, episodes=3000, gamma=1, n0=100)
     
     print_state_values_approximator(env, Q)
     
