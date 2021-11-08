@@ -158,6 +158,7 @@ def plot_action_value(w, grid_shape=(8, 8)):
 
 
 if __name__ == '__main__':
+    np.random.seed(777)
     start = time.time()
     env = gym.make('FrozenLake8x8-v1', is_slippery=False)
 
