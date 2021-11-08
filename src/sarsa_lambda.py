@@ -36,7 +36,7 @@ def print_state_values_sarsa(Q, size=8):
 
 def print_policy_sarsa(Q, size=8):
 
-    actions_names = ['l', 's', 'r', 'n']
+    actions_names = ['\u2190', '\u2193', '\u2192', '\u2191']
 
     print("\n\t\t Policy/Actions")
 
@@ -104,7 +104,7 @@ def sarsa_lambda(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
 
     return Q, E, stats, win_
 
-def generate_stats_sarsa(env, Q_, E_, episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
+def generate_stats_sarsa(env, Q_, E_, episodes=100, discount=0.9, alpha=0.01, trace_decay=0.9,
                  epsilon=0.1, type='accumulate', display=True):
     number_actions = env.nA
     #Initialize Q(s,a) with 0
@@ -119,7 +119,7 @@ def generate_stats_sarsa(env, Q_, E_, episodes=1000, discount=0.9, alpha=0.01, t
     rewards = [0.0]
     win_ = 0
 
-    for episode in range(100):
+    for episode in range(episodes):
         aux = 0
         state = env.reset() #Always state=0
         action_probs = policy(state)
@@ -142,7 +142,7 @@ def generate_stats_sarsa(env, Q_, E_, episodes=1000, discount=0.9, alpha=0.01, t
             state = next_state
             action = next_action
 
-    return win_/100
+    return win_/episodes
 
 
 def report_sarsa(stochastic):
@@ -153,7 +153,7 @@ def report_sarsa(stochastic):
 
     env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
 
-    results = pandas.DataFrame(columns=['type', 'epsilon', 'alpha', 'gamma', 'lambda', 'episodes', 'win/loss (%)', 'elapsed time (s)'])
+    results = pandas.DataFrame(columns=['episodes', 'gamma', 'alpha', 'lambda', 'epsilon', 'type', 'win/loss (%)', 'elapsed time (s)'])
 
     for c in ParameterGrid(param_):
         #print(c)
@@ -172,14 +172,14 @@ def report_sarsa(stochastic):
         elapsed_time = toc - tic
 
         # Generate wins
-        win = generate_stats_sarsa(env, Q, E, c['episodes'], c['discount'], c['alpha'], c['trace_decay'], c['epsilon'], c['type'], False)*100
+        win = generate_stats_sarsa(env, Q, E, 100, c['discount'], c['alpha'], c['trace_decay'], c['epsilon'], c['type'], False)*100
 
-        new_row = {'type':    c['type'],
-                   'epsilon': c['epsilon'],
-                   'alpha':   c['alpha'],
+        new_row = {'episodes':c['episodes'],
                    'gamma':c['discount'],
+                   'alpha':   c['alpha'],
                    'lambda': c['trace_decay'],
-                   'episodes':c['episodes'],
+                   'epsilon': c['epsilon'],
+                   'type':    c['type'],
                    'win/loss (%)': win,
                    'elapsed time (s)': elapsed_time}
 

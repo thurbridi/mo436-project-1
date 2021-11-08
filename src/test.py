@@ -1,257 +1,194 @@
 import gym
 import numpy as np
 import time
-import pandas
-from sklearn.preprocessing import StandardScaler
-from sklearn.kernel_approximation import RBFSampler
-from tqdm import tqdm
+import itertools
 import matplotlib.pyplot as plt
-from sklearn.model_selection import ParameterGrid
+# from utils import plotting
+
+number_states = 64
+number_actions = 4
+"""
+def feature_function(state, action):
+    number_cols = np.sqrt(64)
+    row, col = state // number_cols, state % number_cols
+    #row, col = row / 7, col / 7
+
+    action_features = np.zeros(4, dtype=np.float64)
+    action_features[action] = 1
+
+    features = np.array([1, row, col, row**2, col**2,
+                        row**2 * col**2], dtype='float64')
+
+    features = np.concatenate([features, action_features])
+
+    if state == 63:
+        return np.zeros(features.shape[0])
+
+    return features
+"""
+
+def feature_function(env, state, action):
+    row, col = state // 4, state % 4
+    row, col = int(row / 7), int(col / 7)
+
+    state_prox = env.P[state][action][0][1]
+    row_prox, col_prox = state_prox // 4, state_prox % 4
+    row_prox, col_prox = int(row_prox / 7), int(col_prox / 7)
+
+    #features = np.zeros(64, dtype=np.float64)
+    features = np.array([1, row, col, row*col,
+                         row_prox, col_prox, row_prox*col_prox,
+                         row*row_prox, col*col_prox], dtype='float64')
+
+    #action_features = np.zeros(4, dtype=np.float64)
+    #action_features[action] = 1
+
+    #features = np.array([1, row, col, row**2, col**2], dtype='float64')
+
+    #features = np.concatenate([features, action_features])
+
+    #if state == 63:
+    #    return np.zeros(features.shape[0])
+
+    return features
+
+def linear_regression(x, w):
+    return np.dot(w, x)
+
+def choose_action(env, s, actions, w, epsilon):
+    action_values = np.zeros(len(actions), dtype=np.float64)
+    for action in actions:
+        x = feature_function(env, s, action)
+        action_values[action] = linear_regression(x, w)
+
+    if np.random.rand() < epsilon:
+        selected = np.random.choice(len(actions))
+    else:
+        selected = np.random.choice(np.argwhere(
+            action_values == np.max(action_values)).ravel())
+
+    return selected
 
 
-def print_state_values_approximator(env, Q, size=8):
+def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
+                        epsilon=0.1):
+    number_actions = env.nA
+    actions = np.arange(number_actions)
+    x = feature_function(env, 0, 0)
+    n_features = len(x)
 
-    x, w = Q
+    w = np.zeros(n_features) + 0.001
 
-    print("\n\t\t State Value")
+    stats = np.zeros(episodes)
 
-    s = 0
-    for _ in range(size):
+    for episode in range(episodes):
+        aux = 0
 
-        print("------------------------------------------------")
+        state = env.reset()  # Always state=0
 
-        for _ in range(size):
+        action = choose_action(env, state, actions, w, epsilon)
 
-            # Get the max value for state
-            q = np.asarray([np.dot(w, x((s, a))) for a in range(env.action_space.n)])
+        """
+        if w.max() > 10:
+            w = (w- w.min()) / (w.max() - w.min())
+        if w.min() < -10:
+            w = (w- w.min()) / (w.max() - w.min())
+        """
+        x = feature_function(env, state, action)
+        z = np.zeros(n_features)
+        q_prev = 0
 
-            v = np.max(q)
+        for t in itertools.count():
+            aux += 1
 
-            if v >= 0:
-                print(" %.4f|" % v, end="")
-            else:
-                print("%.4f|" % v, end="")
+            state_next, reward, done, _ = env.step(action)
+            action_next = choose_action(env, state_next, actions, w, epsilon)
+            x_next = feature_function(env, state_next, action_next)
 
-            s += 1
+            q = linear_regression(x, w)
+            q_next = linear_regression(x_next, w)
 
-        print("")
+            #z = z + x
 
-    print("------------------------------------------------")
+            stats[episode] += reward
+            # env.render()
 
+            z = discount * trace_decay * z + x
+            w = w + alpha * z * (reward + discount* q_next - q)
+            #delta = reward + discount * q_next - q
 
-def print_policy_approximator(env, Q, size=8):
+            #z = discount * trace_decay * z + \
+            #    (1 - alpha * discount * trace_decay * np.dot(z, x)) * x
 
-    x, w = Q
+            #w = w + alpha * (delta + q - q_prev) * z - alpha * (q - q_prev) * x
+            ## w = w + alpha * delta * x
+            if done:
+                if reward == 1:
+                    print("episode, aux", episode, aux)
+                # else:
+                # print('Episode ended: agent fell in the lake')
+                break
 
-    actions_names = ['l', 's', 'r', 'n']
+            q_prev = q_next
+            x = x_next
+            action = action_next
 
-    s = 0
+    return w, stats
 
-    print("\n\t\t Policy/Actions")
+def draw_feature_sarsa_lambda_approx(env, w):
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
 
-    for _ in range(size):
-        print("------------------------------------------------")
+    # Make data.
+    X = np.arange(0, 8, 1)
+    Y = np.arange(0, 8, 1)
+    X, Y = np.meshgrid(X, Y)
 
-        for _ in range(size):
+    states = np.arange(0, 64, 1)
 
-            # Get the max value for state
-            q = np.asarray([np.dot(w, x((s, a))) for a in range(env.action_space.n)])
+    env.render()
+    for a in range(4):
+        Z = np.array([linear_regression(feature_function(env, s, a), w)
+                      for s in states])
+        Z = Z.reshape(8, 8)
 
-            # Get the best action
-            best_action = np.argmax(q)
+        # Plot the surface.
+        ax.plot_surface(X, Y, Z, linewidth=0, antialiased=False)
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
 
-            s += 1
-            print("  %s  |" % actions_names[best_action], end="")
-
-        print("")
-
-    print("------------------------------------------------")
-
-
-def generate_stats(env, Q):
-
-    x, w = Q
-
-    wins = 0
-    r = 100
-    for i in range(r):
-
-        e, reward_array = _run(env, x, w, eps=0.1)
-
-        #print(e)
-
-        if reward_array[-1] == 1:
-            wins += 1
-
-    return wins/r
-
-
-def plot_episode_return(data):
-
-    plt.xlabel("Episode")
-    plt.ylabel("Cumulative Reward")
-    plt.plot(data)
+    plt.figure()
+    plt.plot(stats)
     plt.show()
 
 
-def _run(env, x, w, eps):
-
-     env.reset()
-     episode = []
-     reward_array = []
-
-     while True:
-
-        state = env.env.s
-
-        # Select the action prob
-        p = np.random.random()
-
-        # epsilon-greedy for exploration vs exploitation
-        if p < (1 - eps):
-
-            q = np.asarray([np.dot(w, x((state, a))) for a in range(env.action_space.n)])
-
-            action = np.random.choice(np.argwhere(q == np.max(q)).ravel())
-
-        else:
-            action = np.random.choice(env.action_space.n)
-
-
-        # Run the action
-        _, reward, done, _ = env.step(action)
-
-        # Add step and reward
-        episode.append((state, action))
-        reward_array.append(reward)
-
-        if done:
-            break
-
-     return episode, reward_array
-
-
-def _learn_mc_approximator(env, episodes, gamma, alpha, disable_tqdm=False):
-
-    featurizer = RBFSampler(gamma=0.2, n_components=50, random_state=1)
-    scaler = StandardScaler()
-
-    # Collect observations
-    X = np.asarray([[np.random.randint(0, 64), np.random.randint(0, 4)] for x in range(30000)])
-
-    # Fit the feature function vector
-    scaler.fit(X)
-    featurizer.fit(scaler.transform(X))
-
-    # Generate the feature funtion
-    x = lambda state_action: featurizer.transform(scaler.transform(np.asarray([state_action])))[0]
-
-    # Get the feature vector shape
-    m = x((0, 0)).shape
-
-    # Initialize weight vector
-    w = np.zeros(m[0])
-
-    stats = {'return':[], 'cumGTrain':0}
-
-    tic = time.time()
-
-    with tqdm(total=episodes, disable=disable_tqdm) as pbar:
-
-        G = 0
-        sumG = 0
-
-        for t in range(episodes):
-
-            eps = episodes / (episodes + 5*t)
-            #alpha = episodes//10 / (episodes + 10*t)
-
-            episode, rewards = _run(env, x, w, eps=eps)
-
-            for i, state_action in enumerate(episode):
-
-                x_s = x(state_action)
-
-                G = np.dot(np.array(rewards[i:]), np.fromfunction(lambda i: gamma ** i, (len(rewards) - i , )))
-                sumG += G
-
-                w_delta = (G - np.dot(w, x_s)) * x_s
-                w_delta = np.minimum(np.maximum(w_delta, -1e+5), 1e+5)
-
-                w += alpha*w_delta
-
-            stats['return'].append(G)
-
-            toc = time.time()
-
-            pbar.set_description(("{:.1f}s - sumG: {:.6f}, alpha: {:.6f}, gamma: {:.6f}, eps: {:.6f}".format((toc-tic), sumG, alpha, gamma, eps)))
-
-            # Update the bar
-            pbar.update(1)
-
-        stats['cumGTrain'] = sumG
-
-    return (x, w), stats
-
-
-def train_approximator(stochastic, episodes=10000, gamma=1, alpha=0.001):
-
-    env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
-
-    # Reset the seed
-    np.random.seed(2)
-    env.seed(2)
-
-    # Learn a policy with MC
-    Q, stats = _learn_mc_approximator(env, episodes=episodes, gamma=gamma, alpha=alpha, disable_tqdm=True)
-
-    # Plot stats
-    plot_episode_return(stats['return'])
-
-    return Q, env
-
-
-def grid_search_approximator(stochastic):
-
-    if stochastic:
-        param_grid = {'alpha': [0.1, 0.001, 0.0005], 'gamma': [1, 0.9, 0.1], 'episodes': [1000, 10000]}
-    else:
-        param_grid = {'alpha': [0.1, 0.001, 0.0005], 'gamma': [1, 0.9, 0.1], 'episodes': [1000, 10000]}
-
-    env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
-
-    results = pandas.DataFrame(columns=['alpha', 'gamma', 'episodes', 'Total G Train', 'win/loss (%)', 'elapsed time (s)'])
-
-    for c in ParameterGrid(param_grid):
-
-        # Reset the seed
-        np.random.seed(412)
-        env.seed(412)
-
-        tic = time.time()
-
-        # Learn policy
-        Q, stats = _learn_mc_approximator(env, **c, disable_tqdm=True)
-
-        toc = time.time()
-
-        elapsed_time = toc - tic
-
-        # Generate wins
-        win = generate_stats(env, Q)*100
-
-        new_row = {'alpha': c['alpha'],
-                   'gamma': c['gamma'],
-                   'episodes': c['episodes'],
-                   'Total G Train': stats['cumGTrain'],
-                   'win/loss (%)': win,
-                   'elapsed time (s)': elapsed_time}
-
-        results = results.append(new_row, ignore_index=True)
-
-    print(results)
-
 if __name__ == '__main__':
+    start = time.time()
+    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
 
-    grid_search_approximator(stochastic=False)
-    #train_approximator(stochastic=False)
+    w, stats = sarsa_lambda_approx(
+        env, 10000, alpha=0.1, epsilon=0.1, discount=0.9, trace_decay=0.9)
+
+    end = time.time()
+    print("Algorithm took: ", end-start)
+
+    print(w)
+
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+
+    # Make data.
+    X = np.arange(0, 8, 1)
+    Y = np.arange(0, 8, 1)
+    X, Y = np.meshgrid(X, Y)
+
+    states = np.arange(0, 64, 1)
+    for a in range(4):
+        Z = np.array([linear_regression(feature_function(env, s, a), w)
+                      for s in states])
+        Z = Z.reshape(8, 8)
+
+        # Plot the surface.
+        ax.plot_surface(X, Y, Z, linewidth=0, antialiased=False)
+
+    plt.figure()
+    plt.plot(stats)
+    plt.show()
