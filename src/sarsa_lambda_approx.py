@@ -161,9 +161,9 @@ def generate_stats_sarsa_approx(env, w_, episodes=100, discount=0.99, alpha=0.01
 
 def report_sarsa_approx(stochastic):
     if stochastic:
-        param_ = {'epsilon': [0.1], 'alpha': [0.001, 0.01, 0.1], 'discount': [1.0, 0.99, 0.9], 'trace_decay': [0.9], 'episodes': [15000, 20000]}
+        param_ = {'epsilon': [0.01], 'alpha': [0.001, 0.01, 0.1], 'discount': [0.99], 'trace_decay': [0.01, 0.5, 0.9, 1.0], 'episodes': [15000, 20000]}
     else:
-        param_ = {'epsilon': [0.1], 'alpha': [0.001, 0.01, 0.1], 'discount': [1.0, 0.99, 0.9], 'trace_decay': [0.9], 'episodes': [15000, 20000]}
+        param_ = {'epsilon': [0.01], 'alpha': [0.001, 0.01, 0.1], 'discount': [0.99], 'trace_decay': [0.01, 0.5, 0.9, 1.0], 'episodes': [15000, 20000]}
 
     env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
 
@@ -201,7 +201,7 @@ def report_sarsa_approx(stochastic):
     return results
 
 def draw_feature_sarsa_lambda_approx(env, w):
-    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=(8,8))
 
     # Make data.
     X = np.arange(0, 8, 1)
@@ -216,7 +216,10 @@ def draw_feature_sarsa_lambda_approx(env, w):
         Z = Z.reshape(8, 8)
 
         # Plot the surface.
-        ax.plot_surface(X, Y, Z, linewidth=0, antialiased=False)
+        ax.plot_surface(X, Y, Z, alpha=0.5, linewidth=0.2, antialiased=True)
+        ax.azim = -45
+        ax.dist = 10
+        ax.elev = 20
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
 

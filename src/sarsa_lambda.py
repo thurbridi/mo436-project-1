@@ -147,9 +147,9 @@ def generate_stats_sarsa(env, Q_, E_, episodes=100, discount=0.9, alpha=0.01, tr
 
 def report_sarsa(stochastic):
     if stochastic:
-        param_ = {'type': ['accumulate', 'replace'], 'epsilon': [0.01, 0.05, 0.1], 'alpha': [0.01], 'discount': [1.0, 0.99, 0.9], 'trace_decay': [0.9], 'episodes': [1000, 5000]}
+        param_ = {'type': ['accumulate', 'replace'], 'epsilon': [0.01, 0.05, 0.1], 'alpha': [0.01], 'discount': [0.99], 'trace_decay': [0.01, 0.5, 0.9, 1.0], 'episodes': [1000, 5000]}
     else:
-        param_ = {'type': ['accumulate', 'replace'], 'epsilon': [0.01, 0.05, 0.1], 'alpha': [0.01], 'discount': [1.0, 0.99, 0.9], 'trace_decay': [0.9], 'episodes': [1000, 5000]}
+        param_ = {'type': ['accumulate', 'replace'], 'epsilon': [0.01, 0.05, 0.1], 'alpha': [0.01], 'discount': [0.99], 'trace_decay': [0.0, 0.5, 0.9, 1.0], 'episodes': [1000, 5000]}
 
     env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
 
