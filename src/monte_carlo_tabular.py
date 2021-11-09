@@ -1,5 +1,6 @@
 import gym
 import numpy as np
+import os
 import random
 import time
 import pandas
@@ -133,7 +134,9 @@ def _run(env, Q, eps_params=None, display=False):
         episode.append([state, action, reward])
         
         if display:
+            os.system('clear')
             env.render()
+            time.sleep(1)
         
         if done:
             break
@@ -199,7 +202,7 @@ def train_tabular(stochastic, episodes=10000, gamma=0.9, n0=10):
     env.seed(42)
     
     # Learn a policy with MC
-    Q, stats = _learn_mc_tabular(env, episodes=episodes, gamma=gamma, n0=n0, disable_tqdm=True)
+    Q, stats = _learn_mc_tabular(env, episodes=episodes, gamma=gamma, n0=n0, disable_tqdm=False)
         
     # Plot stats
     plot_episode_return(stats['return'])
@@ -249,7 +252,7 @@ def grid_search_tabular(stochastic):
 
 if __name__ == '__main__':
 
-    Q, env = train_tabular(stochastic=True, episodes=100000, gamma=1, n0=1000)
+    Q, env = train_tabular(stochastic=True, episodes=10000, gamma=1, n0=1000)
     
     play(env, Q)
     

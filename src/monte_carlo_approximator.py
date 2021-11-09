@@ -92,7 +92,7 @@ def play(env, Q):
     
     x, w = Q
     
-    _run(env, x, w, eps=0, display=True)
+    _run(env, x, w, eps=0.1, display=True)
     
     
 def plot_episode_return(data):
@@ -141,7 +141,7 @@ def _run(env, x, w, eps, display=False):
         count += 1
         
         if display:
-            #os.system('clear')
+            os.system('clear')
             env.render()
             time.sleep(1)
     
@@ -229,7 +229,7 @@ def train_approximator(stochastic, episodes=10000, gamma=1, alpha=0.001, eps=0.1
     env.seed(2)
     
     # Learn a policy with MC
-    Q, stats = _learn_mc_approximator(env, episodes=episodes, gamma=gamma, alpha=alpha, eps=eps, disable_tqdm=True)
+    Q, stats = _learn_mc_approximator(env, episodes=episodes, gamma=gamma, alpha=alpha, eps=eps, disable_tqdm=False)
     
     # Plot stats
     plot_episode_return(stats['return'])
@@ -280,16 +280,24 @@ def grid_search_approximator(stochastic):
 
 if __name__ == '__main__':
     
-    grid_search_approximator(stochastic=True)
-    exit()
-    Q, env = train_approximator(stochastic=False, episodes=3000, gamma=0.9, alpha=0.01)
+    Q, env = train_approximator(stochastic=True, episodes=10000, alpha=0.001, gamma=1, eps=0.5)
     
-    print_state_values_approximator(env, Q)
+    #print_state_values_approximator(env, Q)
     
-    print_policy_approximator(env, Q)
+    #print_policy_approximator(env, Q)
     
-    print(generate_stats(env, Q)*100)
+    #print(generate_stats(env, Q)*100)
    
     play(env, Q)
+    
+    play(env, Q)
+   
+    play(env, Q)
+    
+    play(env, Q)
+   
+    play(env, Q)
+   
+   
    
    
