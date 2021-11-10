@@ -1,15 +1,14 @@
-##############################################################################
-#                   CODE OF ARTHUR                                           #
-##############################################################################
 import gym
 import numpy as np
-import os
 import time
 import pandas
 import random
 import itertools
 import matplotlib.pyplot as plt
 from sklearn.model_selection import ParameterGrid
+import plotly
+import plotly.graph_objects as go
+import plotly.express as px
 
 
 action_names = {
@@ -36,7 +35,7 @@ def _next_position(row, col, action):
     return row_next, col_next
 
 
-def feature_function2(state, action):
+def feature_function(state, action):
     n_rows, n_cols = (8, 8)
 
     row, col = state // n_rows, state % n_cols
@@ -63,15 +62,15 @@ def feature_function2(state, action):
     return features
 
 
-def linear_regression2(x, w):
+def linear_regression(x, w):
     return np.dot(w, x)
 
 
-def choose_action2(s, actions, w, epsilon):
+def choose_action(s, actions, w, epsilon):
     action_values = np.zeros(len(actions), dtype=np.float64)
     for action in actions:
-        x = feature_function2(s, action)
-        action_values[action] = linear_regression2(x, w)
+        x = feature_function(s, action)
+        action_values[action] = linear_regression(x, w)
 
     if np.random.rand() < epsilon:
         selected = np.random.choice(len(actions))
@@ -82,7 +81,8 @@ def choose_action2(s, actions, w, epsilon):
     return selected
 
 
-def sarsa_lambda_approx2(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
+def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
+
                         epsilon=0.1, verbose=False):
     number_actions = env.nA
     actions = np.arange(number_actions)
@@ -97,9 +97,9 @@ def sarsa_lambda_approx2(env,  episodes=1000, discount=0.9, alpha=0.01, trace_de
 
         state = env.reset()  # Always state=0
 
-        action = choose_action2(state, actions, w, epsilon)
+        action = choose_action(state, actions, w, epsilon)
 
-        x = feature_function2(state, action)
+        x = feature_function(state, action)
         z = np.zeros(n_features)
         q_prev = 0
 
@@ -112,11 +112,11 @@ def sarsa_lambda_approx2(env,  episodes=1000, discount=0.9, alpha=0.01, trace_de
             aux += 1
 
             state_next, reward, done, _ = env.step(action)
-            action_next = choose_action2(state_next, actions, w, epsilon)
-            x_next = feature_function2(state_next, action_next)
+            action_next = choose_action(state_next, actions, w, epsilon)
+            x_next = feature_function(state_next, action_next)
 
-            q = linear_regression2(x, w)
-            q_next = linear_regression2(x_next, w)
+            q = linear_regression(x, w)
+            q_next = linear_regression(x_next, w)
 
             delta = reward + discount * q_next - q
 
@@ -144,7 +144,7 @@ def sarsa_lambda_approx2(env,  episodes=1000, discount=0.9, alpha=0.01, trace_de
     return w, stats
 
 
-def generate_stats_sarsa_approx2(env, w, episodes=100,
+def generate_stats_sarsa_approx(env, w, episodes=100,
                                 epsilon=0.0, display=False):
     number_actions = env.nA
     actions = np.arange(number_actions)
@@ -153,41 +153,36 @@ def generate_stats_sarsa_approx2(env, w, episodes=100,
     for episode in range(episodes):
         aux = 0
         state = env.reset()  # Always state=0
-        action = choose_action2(state, actions, w, epsilon)
-        x = feature_function2(state, action)
+        action = choose_action(state, actions, w, epsilon)
+        x = feature_function(state, action)
 
         for t in itertools.count():
             aux += 1
 
             state_next, reward, done, _ = env.step(action)
-            action_next = choose_action2(state_next, actions, w, epsilon)
-            x_next = feature_function2(state_next, action_next)
+            action_next = choose_action(state_next, actions, w, epsilon)
+            x_next = feature_function(state_next, action_next)
 
             x = x_next
             action = action_next
 
             if display:
-                #os.system('clear')
                 env.render()
-                #time.sleep(1)
 
             if done:
                 if reward == 1:
                     win_ += 1
-                if display:
-                    #os.system('clear')
-                    env.render()
                 break
 
     return win_/episodes
 
 
-def report_sarsa_approx2(stochastic):
+def report_sarsa_approx(stochastic):
     if stochastic:
-        param_ = {'epsilon': [0.01], 'alpha': [1e-2, 1e-3, 1e-5], 'discount': [
+        param_ = {'epsilon': [0.0], 'alpha': [1e-1, 1e-3, 1e-5], 'discount': [
             1.0], 'trace_decay': [0.0, 0.4, 0.6, 1.0], 'episodes': [1500, 2000]}
     else:
-        param_ = {'epsilon': [0.01], 'alpha': [1e-2, 1e-3, 1e-5], 'discount': [
+        param_ = {'epsilon': [0.01], 'alpha': [1e-1, 1e-3, 1e-5], 'discount': [
             1.0], 'trace_decay': [0.0, 0.4, 0.6, 1.0], 'episodes': [1500, 2000]}
 
     env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
@@ -205,7 +200,7 @@ def report_sarsa_approx2(stochastic):
         tic = time.time()
 
         # Learn policy
-        w, stats = sarsa_lambda_approx2(
+        w, stats = sarsa_lambda_approx(
             env, c['episodes'], c['discount'], c['alpha'], c['trace_decay'], c['epsilon'])
 
         toc = time.time()
@@ -213,7 +208,7 @@ def report_sarsa_approx2(stochastic):
         elapsed_time = toc - tic
 
         # Generate wins
-        win = generate_stats_sarsa_approx2(
+        win = generate_stats_sarsa_approx(
             env, w, 100, c['epsilon'], False)*100
 
         new_row = {'episodes': c['episodes'],
@@ -229,8 +224,8 @@ def report_sarsa_approx2(stochastic):
     return results
 
 
-def plot_action_value2(w, grid_shape=(8, 8)):
-    fig, ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=(8,8))
+def plot_action_value(w, grid_shape=(8, 8)):
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
     rows, cols = grid_shape
 
     # Make data.
@@ -240,13 +235,10 @@ def plot_action_value2(w, grid_shape=(8, 8)):
 
     states = np.arange(0, rows * cols, 1)
     for a in range(4):
-        Z = np.array([linear_regression2(feature_function2(s, a), w)
+        Z = np.array([linear_regression(feature_function(s, a), w)
                       for s in states])
         Z = Z.reshape(rows, cols)
 
-        ax.azim = -45
-        ax.dist = 10
-        ax.elev = 30
         # Plot the surface.
         ax.plot_surface(X, Y, Z, linewidth=0,
                         antialiased=False, label=action_names[a])
@@ -257,18 +249,53 @@ def plot_action_value2(w, grid_shape=(8, 8)):
     return fig
 
 
+def plot_action_value_plotly(w, grid_shape=(8, 8), title=''):
+    cmap = plotly.colors.qualitative.Plotly
+
+    # Initialize figure with 4 3D subplots
+    fig = go.Figure()
+    # Generate data
+    grid = np.arange(0, 64, 1)
+    x = grid // 8
+    y = grid % 8
+    # adding surfaces to subplots.
+    for action, name in action_names.items():
+        z = np.array([linear_regression(feature_function(s, action), w)
+                      for s in grid])
+
+        fig.add_trace(
+            go.Mesh3d(x=x, y=y, z=z, opacity=1.0, color=cmap[action], name=f'a={name}', showlegend=True))
+
+    fig.update_layout(
+        scene_camera=dict(
+            up=dict(x=0, y=0, z=1),
+            center=dict(x=0, y=0, z=0),
+            eye=dict(x=1.5, y=-1.5, z=1.25)
+        ),
+        scene=dict(
+            xaxis_title='Row',
+            yaxis_title='Col',
+            zaxis_title='Q(s,a)'
+        ),
+        title_text=title,
+        height=800,
+        width=800
+    )
+
+    fig.show()
+
+
 if __name__ == '__main__':
-    """
     np.random.seed(777)
     start = time.time()
-    env = gym.make('FrozenLake8x8-v1', is_slippery=True)
+    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
 
-    w, stats = sarsa_lambda_approx2(
-        env, 10000, alpha=1e-5, epsilon=0.0, discount=1.0, trace_decay=0.6)
+    w, stats = sarsa_lambda_approx(
+        env, 1000, alpha=1e-5, epsilon=0.0, discount=1.0, trace_decay=0.6)
 
     end = time.time()
 
-    win_ratio = generate_stats_sarsa_approx2(env, w)
+    win_ratio = generate_stats_sarsa_approx(env, w)
 
     print("Algorithm took: ", end-start)
 
@@ -276,21 +303,8 @@ if __name__ == '__main__':
 
     print(f'Win ratio: {win_ratio}')
 
-    plot_action_value2(w)
+    plot_action_value_plotly(w)
 
     plt.figure()
     plt.plot(stats)
     plt.show()
-    """
-    """
-    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
-    w_dlfsarsa2, stats = sarsa_lambda_approx2(env, 1500, alpha=1e-5, epsilon=0.01, discount=1.0, trace_decay=0.6)
-    print("WOW")
-    time.sleep(3)
-    generate_stats_sarsa_approx2(env, w_dlfsarsa2, episodes=1, display=True)
-    """
-    env = gym.make('FrozenLake8x8-v1', is_slippery=True)
-    w_slfsarsa2, stats = sarsa_lambda_approx2(env, 5000, alpha=1e-2, epsilon=0.01, discount=1.0, trace_decay=0.0)
-    print("WOW")
-    time.sleep(3)
-    generate_stats_sarsa_approx2(env, w_slfsarsa2, episodes=1, display=True)
