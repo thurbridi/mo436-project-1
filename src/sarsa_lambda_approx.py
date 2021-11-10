@@ -6,6 +6,9 @@ import random
 import itertools
 import matplotlib.pyplot as plt
 from sklearn.model_selection import ParameterGrid
+import plotly
+import plotly.graph_objects as go
+import plotly.express as px
 
 
 action_names = {
@@ -247,9 +250,6 @@ def plot_action_value(w, grid_shape=(8, 8)):
 
 
 def plot_action_value_plotly(w, grid_shape=(8, 8), title=''):
-    import plotly
-    import plotly.graph_objects as go
-
     cmap = plotly.colors.qualitative.Plotly
 
     # Initialize figure with 4 3D subplots
