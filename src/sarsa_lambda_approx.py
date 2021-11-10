@@ -246,13 +246,52 @@ def plot_action_value(w, grid_shape=(8, 8)):
     return fig
 
 
+def plot_action_value_plotly(w, grid_shape=(8, 8), title=''):
+    import plotly
+    import plotly.graph_objects as go
+
+    cmap = plotly.colors.qualitative.Plotly
+
+    # Initialize figure with 4 3D subplots
+    fig = go.Figure()
+    # Generate data
+    grid = np.arange(0, 64, 1)
+    x = grid // 8
+    y = grid % 8
+    # adding surfaces to subplots.
+    for action, name in action_names.items():
+        z = np.array([linear_regression(feature_function(s, action), w)
+                      for s in grid])
+
+        fig.add_trace(
+            go.Mesh3d(x=x, y=y, z=z, opacity=1.0, color=cmap[action], name=f'a={name}', showlegend=True))
+
+    fig.update_layout(
+        scene_camera=dict(
+            up=dict(x=0, y=0, z=1),
+            center=dict(x=0, y=0, z=0),
+            eye=dict(x=1.5, y=-1.5, z=1.25)
+        ),
+        scene=dict(
+            xaxis_title='Row',
+            yaxis_title='Col',
+            zaxis_title='Q(s,a)'
+        ),
+        title_text=title,
+        height=800,
+        width=800
+    )
+
+    fig.show()
+
+
 if __name__ == '__main__':
     np.random.seed(777)
     start = time.time()
-    env = gym.make('FrozenLake8x8-v1', is_slippery=True)
+    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
 
     w, stats = sarsa_lambda_approx(
-        env, 10000, alpha=1e-5, epsilon=0.0, discount=1.0, trace_decay=0.6)
+        env, 1000, alpha=1e-5, epsilon=0.0, discount=1.0, trace_decay=0.6)
 
     end = time.time()
 
@@ -264,7 +303,7 @@ if __name__ == '__main__':
 
     print(f'Win ratio: {win_ratio}')
 
-    plot_action_value(w)
+    plot_action_value_plotly(w)
 
     plt.figure()
     plt.plot(stats)
