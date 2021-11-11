@@ -35,7 +35,7 @@ def _next_position(row, col, action):
     return row_next, col_next
 
 
-def feature_function(state, action):
+def feature_function2(state, action):
     n_rows, n_cols = (8, 8)
 
     row, col = state // n_rows, state % n_cols
@@ -62,15 +62,15 @@ def feature_function(state, action):
     return features
 
 
-def linear_regression(x, w):
+def linear_regression2(x, w):
     return np.dot(w, x)
 
 
-def choose_action(s, actions, w, epsilon):
+def choose_action2(s, actions, w, epsilon):
     action_values = np.zeros(len(actions), dtype=np.float64)
     for action in actions:
-        x = feature_function(s, action)
-        action_values[action] = linear_regression(x, w)
+        x = feature_function2(s, action)
+        action_values[action] = linear_regression2(x, w)
 
     if np.random.rand() < epsilon:
         selected = np.random.choice(len(actions))
@@ -81,9 +81,9 @@ def choose_action(s, actions, w, epsilon):
     return selected
 
 
-def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
+def sarsa_lambda_approx2(env,  episodes=1000, discount=0.9, alpha=0.01, trace_decay=0.9,
 
-                        epsilon=0.1, verbose=False):
+                         epsilon=0.1, verbose=False):
     number_actions = env.nA
     actions = np.arange(number_actions)
     n_features = 19
@@ -97,9 +97,9 @@ def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_dec
 
         state = env.reset()  # Always state=0
 
-        action = choose_action(state, actions, w, epsilon)
+        action = choose_action2(state, actions, w, epsilon)
 
-        x = feature_function(state, action)
+        x = feature_function2(state, action)
         z = np.zeros(n_features)
         q_prev = 0
 
@@ -112,11 +112,11 @@ def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_dec
             aux += 1
 
             state_next, reward, done, _ = env.step(action)
-            action_next = choose_action(state_next, actions, w, epsilon)
-            x_next = feature_function(state_next, action_next)
+            action_next = choose_action2(state_next, actions, w, epsilon)
+            x_next = feature_function2(state_next, action_next)
 
-            q = linear_regression(x, w)
-            q_next = linear_regression(x_next, w)
+            q = linear_regression2(x, w)
+            q_next = linear_regression2(x_next, w)
 
             delta = reward + discount * q_next - q
 
@@ -144,8 +144,8 @@ def sarsa_lambda_approx(env,  episodes=1000, discount=0.9, alpha=0.01, trace_dec
     return w, stats
 
 
-def generate_stats_sarsa_approx(env, w, episodes=100,
-                                epsilon=0.0, display=False):
+def generate_stats_sarsa_approx2(env, w, episodes=100,
+                                 epsilon=0.0, display=False):
     number_actions = env.nA
     actions = np.arange(number_actions)
     win_ = 0
@@ -153,15 +153,15 @@ def generate_stats_sarsa_approx(env, w, episodes=100,
     for episode in range(episodes):
         aux = 0
         state = env.reset()  # Always state=0
-        action = choose_action(state, actions, w, epsilon)
-        x = feature_function(state, action)
+        action = choose_action2(state, actions, w, epsilon)
+        x = feature_function2(state, action)
 
         for t in itertools.count():
             aux += 1
 
             state_next, reward, done, _ = env.step(action)
-            action_next = choose_action(state_next, actions, w, epsilon)
-            x_next = feature_function(state_next, action_next)
+            action_next = choose_action2(state_next, actions, w, epsilon)
+            x_next = feature_function2(state_next, action_next)
 
             x = x_next
             action = action_next
@@ -177,7 +177,7 @@ def generate_stats_sarsa_approx(env, w, episodes=100,
     return win_/episodes
 
 
-def report_sarsa_approx(stochastic):
+def report_sarsa_approx2(stochastic):
     if stochastic:
         param_ = {'epsilon': [0.0], 'alpha': [1e-1, 1e-3, 1e-5], 'discount': [
             1.0], 'trace_decay': [0.0, 0.4, 0.6, 1.0], 'episodes': [1500, 2000]}
@@ -200,7 +200,7 @@ def report_sarsa_approx(stochastic):
         tic = time.time()
 
         # Learn policy
-        w, stats = sarsa_lambda_approx(
+        w, stats = sarsa_lambda_approx2(
             env, c['episodes'], c['discount'], c['alpha'], c['trace_decay'], c['epsilon'])
 
         toc = time.time()
@@ -208,7 +208,7 @@ def report_sarsa_approx(stochastic):
         elapsed_time = toc - tic
 
         # Generate wins
-        win = generate_stats_sarsa_approx(
+        win = generate_stats_sarsa_approx2(
             env, w, 100, c['epsilon'], False)*100
 
         new_row = {'episodes': c['episodes'],
@@ -224,7 +224,7 @@ def report_sarsa_approx(stochastic):
     return results
 
 
-def plot_action_value(w, grid_shape=(8, 8)):
+def plot_action_value2(w, grid_shape=(8, 8)):
     fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
     rows, cols = grid_shape
 
@@ -235,7 +235,7 @@ def plot_action_value(w, grid_shape=(8, 8)):
 
     states = np.arange(0, rows * cols, 1)
     for a in range(4):
-        Z = np.array([linear_regression(feature_function(s, a), w)
+        Z = np.array([linear_regression2(feature_function2(s, a), w)
                       for s in states])
         Z = Z.reshape(rows, cols)
 
@@ -260,7 +260,7 @@ def plot_action_value_plotly(w, grid_shape=(8, 8), title=''):
     y = grid % 8
     # adding surfaces to subplots.
     for action, name in action_names.items():
-        z = np.array([linear_regression(feature_function(s, action), w)
+        z = np.array([linear_regression2(feature_function2(s, action), w)
                       for s in grid])
 
         fig.add_trace(
@@ -290,12 +290,12 @@ if __name__ == '__main__':
     start = time.time()
     env = gym.make('FrozenLake8x8-v1', is_slippery=False)
 
-    w, stats = sarsa_lambda_approx(
+    w, stats = sarsa_lambda_approx2(
         env, 1000, alpha=1e-5, epsilon=0.0, discount=1.0, trace_decay=0.6)
 
     end = time.time()
 
-    win_ratio = generate_stats_sarsa_approx(env, w)
+    win_ratio = generate_stats_sarsa_approx2(env, w)
 
     print("Algorithm took: ", end-start)
 
