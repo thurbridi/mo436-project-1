@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 
 
-env = gym.make('FrozenLake8x8-v1')
+env = gym.make('FrozenLake8x8-v0')
 count_actions = env.action_space.n #Actions: Left, Down, Right, Up
 count_states = env.observation_space.n #64 states
 
