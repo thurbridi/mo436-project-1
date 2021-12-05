@@ -45,7 +45,7 @@ class MLP(km.FunctionApproximator):
 
 def sac_train(env, num_episodes=200, target_model_sync_period=10, lr=0.01, tau_=1.0, punishment=-0.1):
     #func = MLP(env, learning_rate=lr)
-    func = LinearFunc2(env, learning_rate=lr)
+    func = LinearFunc(env, learning_rate=lr)
     sac = km.SoftActorCritic.from_func(func)
     pi = sac.policy
     G = []
@@ -72,7 +72,8 @@ def sac_train(env, num_episodes=200, target_model_sync_period=10, lr=0.01, tau_=
             s_ant =  s
             s = s_next
         G.append(env.G)
-
+        
+        print(ep)
     return func, sac, pi, G
 
 def sac_test(env, sac, num_test=10, display=False):
@@ -82,31 +83,39 @@ def sac_test(env, sac, num_test=10, display=False):
     for i in range(num_test):
         s = env.reset()
 
-    if display:
-        env.render()
-
-    for t in itertools.count():
         if display:
-            print(" v(s) = {:.3f}".format(sac.v_func(s)))
-
-            for i, p in enumerate(km.utils.softmax(sac.policy.dist_params(s))):
-                print(" pi({:s}|s) = {:.3f}".format(actions[i], p))
-
-            for i, q in enumerate(sac.q_func1(s)):
-                print(" q1(s,{:s}) = {:.3f}".format(actions[i], q))
-
-            for i, q in enumerate(sac.q_func2(s)):
-                print(" q2(s,{:s}) = {:.3f}".format(actions[i], q))
-
-        a = sac.policy.greedy(s)
-        s, r, done, info = env.step(a)
-
-        if display:
+            os.system('clear')
             env.render()
+            time.sleep(1)
+            print(i)
 
-        if done:
-            reward_global += r
-            break
+        for t in itertools.count():
+            if display:
+                print(" v(s) = {:.3f}".format(sac.v_func(s)))
+
+                for i, p in enumerate(km.utils.softmax(sac.policy.dist_params(s))):
+                    print(" pi({:s}|s) = {:.3f}".format(actions[i], p))
+
+                for i, q in enumerate(sac.q_func1(s)):
+                    print(" q1(s,{:s}) = {:.3f}".format(actions[i], q))
+
+                for i, q in enumerate(sac.q_func2(s)):
+                    print(" q2(s,{:s}) = {:.3f}".format(actions[i], q))
+
+            a = sac.policy.greedy(s)
+            s, r, done, info = env.step(a)
+
+            if display:
+                os.system('clear')
+                env.render()
+                time.sleep(1)
+
+            if done:
+                if display:
+                    os.system('clear')
+                    env.render()
+                reward_global += r
+                break
 
     return reward_global/num_test
 
@@ -191,5 +200,20 @@ def search_params(slippery=False, param=0):
 
 
 if __name__ == '__main__':
-    result = search_params(False, 0)
-    print(result)
+    """
+    env = gym.make('FrozenLake8x8-v0', is_slippery=False)
+    env = km.wrappers.TrainMonitor(env, tensorboard_dir=tbdir)
+    func, sac, pi, Reward = sac_train(env, 1000 ,10 , 0.005, 1.0, -0.1)
+    print("WOW")
+    time.sleep(3)
+    sac_test(env, sac, num_test=1, display=True)
+    """
+    env = gym.make('FrozenLake8x8-v0', is_slippery=True)
+    env = km.wrappers.TrainMonitor(env, tensorboard_dir=tbdir)
+    
+    #km.enable_logging()
+    func, sac, pi, Reward = sac_train(env, 2000 ,10 , 0.1, 1.0, -0.01)
+    print("WOW")
+    time.sleep(3)
+    sac_test(env, sac, num_test=10, display=True)
+    
