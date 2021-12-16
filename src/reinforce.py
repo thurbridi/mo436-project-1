@@ -89,7 +89,7 @@ class FrozenLake(nn.Module):
             
             action = int(action)
         
-            #os.system('clear')
+            os.system('clear')
             self.env.render()
             time.sleep(1)
             
@@ -328,17 +328,17 @@ def grid_search_reinforce(stochastic):
 
 if __name__ == '__main__':
     
-    grid_search_reinforce(False)
+    #grid_search_reinforce(False)
     
-    exit()
+    #exit()
     
-    model, env = train_reinforce(stochastic=False, episodes=5000)
+    model, env = train_reinforce(stochastic=True, episodes=5000, gamma=1, alpha=0.0001, hidden=64)
     
-    model.print_state_values()
+    #model.print_state_values()
     
-    model.print_policy()
+    #model.print_policy()
     
-    print(model.generate_stats()*100)
+    #print(model.generate_stats()*100)
    
     model.play()
 
