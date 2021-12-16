@@ -37,14 +37,15 @@ class FrozenLake(nn.Module):
         
         self.env.reset()
         
-        while True:
+        previous_state = 0
+        action = 0
+        
+        for t in range(100):
             
-            state = torch.tensor(self.env.env.s, dtype=torch.float).to('cpu').unsqueeze(0)
+            state = torch.tensor([action, self.env.env.s], dtype=torch.float)
                         
             # Generate the next action
             log_pi, action = self.reinforce(state)
-            
-            #print(state, action)
             
             action_array.append(action)
             
@@ -52,21 +53,24 @@ class FrozenLake(nn.Module):
             log_pi_array.append(log_pi)
             
             # Generate the baseline
-            b_t = self.baseliner(state).squeeze()
+            #b_t = self.baseliner(state).squeeze()
             
             # Add the baseline to array
-            baseline_array.append(b_t)
+            #baseline_array.append(b_t)
                                 
             # Run the action
             _, reward, done, _ = self.env.step(int(action))
             
             reward_array.append(torch.tensor(reward, dtype=torch.float))
+            
+            previous_state = int(state[1])
+            action = int(action)
         
-            if done:
+            if done:                
                 break
-
+   
         # Stack the lists
-        baseline_array = torch.stack(baseline_array)
+        #baseline_array = torch.stack(baseline_array)
         action_array = torch.stack(action_array)
         log_pi_array = torch.stack(log_pi_array)
         reward_array = torch.stack(reward_array)
@@ -77,21 +81,25 @@ class FrozenLake(nn.Module):
         
         self.env.reset()
         self.env.render()
+        
+        action = 0
     
         while True:
         
-            state = torch.tensor(self.env.env.s, dtype=torch.float).to('cpu').unsqueeze(0)
+            state = torch.tensor([action, self.env.env.s], dtype=torch.float)
                         
             # Generate the next action
             _, action = self.reinforce(state)
                                                 
             # Run the action
             _, reward, done, _ = self.env.step(int(action))
+            
+            action = int(action)
         
             #os.system('clear')
             self.env.render()
             time.sleep(1)
-        
+            
             if done:
                 break
             
@@ -107,7 +115,7 @@ class FrozenLake(nn.Module):
 
             for _ in range(size):
                             
-                v = self.baseliner(torch.tensor(s, dtype=torch.float).to('cpu').unsqueeze(0))
+                v = self.baseliner(torch.tensor([0, s], dtype=torch.float))
                 
                 if v >= 0:
                     print(" %.4f|" % v, end="")
@@ -135,11 +143,11 @@ class FrozenLake(nn.Module):
             for _ in range(size):
 
                 # Get the best action
-                _, best_action = self.reinforce(torch.tensor(s, dtype=torch.float).to('cpu').unsqueeze(0))
+                _, best_action = self.reinforce(torch.tensor([0, s], dtype=torch.float))
 
                 s += 1
                 print("  %s  |" % actions_names[best_action], end="")
-                
+            
             print("")
             
         print("------------------------------------------------")
@@ -164,24 +172,21 @@ class ReinforceNetwork(nn.Module):
     def __init__(self, hidden):
         super().__init__()
 
-        self.fc_mu_1 = nn.Linear(1, hidden)
-        self.fc_mu_2 = nn.Linear(hidden, hidden)
-        self.fc_mu_3 = nn.Linear(hidden, 4)
+        self.fc_mu_1 = nn.Linear(2, hidden)
+        self.fc_mu_2 = nn.Linear(hidden, 4)
         
     def forward(self, state):
                
         mu = torch.relu(self.fc_mu_1(state))
-        mu = torch.relu(self.fc_mu_2(mu))
-        mu = self.fc_mu_3(mu)
+        mu = self.fc_mu_2(mu)
                 
-        probs = F.softmax(mu)    
+        probs = F.softmax(mu)   
         
         action = probs.multinomial(4).data
+      
+        prob = probs[action[0]]
         
-        prob = probs[action[0]].view(1, -1)
-        log_prob = prob.log()
-        
-        return log_prob, action[0].detach()
+        return prob.log(), action[0]
     
 
 class BaselineNetwork(nn.Module):
@@ -189,15 +194,13 @@ class BaselineNetwork(nn.Module):
     def __init__(self, hidden):
         super().__init__()
 
-        self.fc_1 = nn.Linear(1, hidden)
-        self.fc_2 = nn.Linear(hidden, hidden)
-        self.fc_3 = nn.Linear(hidden, 1)
+        self.fc_1 = nn.Linear(2, hidden)
+        self.fc_2 = nn.Linear(hidden, 1)
 
     def forward(self, state):
         
-        b_t = torch.tanh(self.fc_1(state))
-        b_t = torch.tanh(self.fc_2(b_t))
-        b_t = self.fc_3(b_t)
+        b_t = torch.relu(self.fc_1(state))
+        b_t = self.fc_2(b_t)
         
         return b_t
 
@@ -222,6 +225,8 @@ def _learn_reinforce(env, episodes, gamma, alpha, hidden, disable_tqdm=True):
     loss_mse = torch.nn.MSELoss()
     
     model.train()
+    
+    sumG = 0
 
     tic = time.time()
     with tqdm(total=episodes) as pbar:
@@ -230,38 +235,49 @@ def _learn_reinforce(env, episodes, gamma, alpha, hidden, disable_tqdm=True):
         for i  in range(episodes):
                                     
             # Call the model and pass the minibatch
-            R, action_array, log_pi_array, baseline_array = model()
+            rewards, action_array, log_pi_array, baseline_array = model()
 
             # Convert list to tensors and reshape
             baselines = baseline_array
             log_pi = log_pi_array
                         
-            loss_baseline = loss_mse(baselines, R)
+            #loss_baseline = loss_mse(baselines, R)
+            
+            R = torch.zeros(1, 1)
+            loss = 0
+            
+            for i in reversed(range(len(rewards))):
+                R = gamma * R + rewards[i]
+                loss = loss - (log_pi[i]*(R)).sum() #- (0.0001*entropies[i]).sum()
+                
+            loss = loss / len(rewards)
             
             # Compute reinforce loss
-            adjusted_reward = R - baselines.detach()
+            #adjusted_reward = R #- baselines.detach()
 
-            loss_reinforce = torch.sum(-log_pi * R)
+            #loss_reinforce = torch.sum(log_pi * R)
             
             # Join the losses
-            loss = loss_reinforce + loss_baseline      
+            #loss = -loss_reinforce #+ loss_baseline      
             
             optimizer.zero_grad()
             
             # Update the weights
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 40)
                             
             optimizer.step()
             
             # Store the losses
-            reward_array.append(torch.sum(R).cpu().data.numpy())  
+            reward_array.append(torch.sum(R).cpu().data.numpy())
+            
+            sumG += torch.sum(R).cpu().data.numpy()
 
             # Measure elapsed time
             toc = time.time()
 
             # Set the var description
-            pbar.set_description(("{:.1f}s - train RL: {:.6f}".format((toc-tic), loss_reinforce.item())))
+            pbar.set_description(("{:.1f}s - train RL: {:.6f} - G: {:.1f}".format((toc-tic), loss.item(), sumG)))
             
             # Update the bar
             pbar.update(1)
@@ -269,7 +285,7 @@ def _learn_reinforce(env, episodes, gamma, alpha, hidden, disable_tqdm=True):
     return model, reward_array
                 
 
-def train_reinforce(stochastic, episodes=10000, gamma=1, alpha=0.001, hidden=32):
+def train_reinforce(stochastic, episodes=10000, gamma=0.9, alpha=0.0001, hidden=128):
     
     env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
     
@@ -292,7 +308,7 @@ def grid_search_reinforce(stochastic):
     if stochastic:
         param_grid = {'alpha': [0.1, 0.001, 0.0001], 'gamma': [1], 'hidden': [32, 64, 128], 'episodes': [1000]}
     else:
-        param_grid = {'alpha': [0.1, 0.001, 0.0001], 'gamma': [1], 'hidden': [32, 64, 128], 'episodes': [1000]}
+        param_grid = {'alpha': [0.0001, 0.00001], 'gamma': [1, 0.9], 'hidden': [64, 128], 'episodes': [5000, 10000]}
     
     env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
     
@@ -336,7 +352,7 @@ if __name__ == '__main__':
     
     exit()
     
-    model, env = train_reinforce(stochastic=False, episodes=1000)
+    model, env = train_reinforce(stochastic=False, episodes=5000)
     
     model.print_state_values()
     
