@@ -51,12 +51,6 @@ class FrozenLake(nn.Module):
             
             # Add the next observation to array
             log_pi_array.append(log_pi)
-            
-            # Generate the baseline
-            #b_t = self.baseliner(state).squeeze()
-            
-            # Add the baseline to array
-            #baseline_array.append(b_t)
                                 
             # Run the action
             _, reward, done, _ = self.env.step(int(action))
@@ -70,7 +64,6 @@ class FrozenLake(nn.Module):
                 break
    
         # Stack the lists
-        #baseline_array = torch.stack(baseline_array)
         action_array = torch.stack(action_array)
         log_pi_array = torch.stack(log_pi_array)
         reward_array = torch.stack(reward_array)
@@ -229,7 +222,7 @@ def _learn_reinforce(env, episodes, gamma, alpha, hidden, disable_tqdm=True):
     sumG = 0
 
     tic = time.time()
-    with tqdm(total=episodes) as pbar:
+    with tqdm(total=episodes, disable=disable_tqdm) as pbar:
         
         # For each minibatch
         for i  in range(episodes):
@@ -240,25 +233,15 @@ def _learn_reinforce(env, episodes, gamma, alpha, hidden, disable_tqdm=True):
             # Convert list to tensors and reshape
             baselines = baseline_array
             log_pi = log_pi_array
-                        
-            #loss_baseline = loss_mse(baselines, R)
             
             R = torch.zeros(1, 1)
             loss = 0
             
             for i in reversed(range(len(rewards))):
                 R = gamma * R + rewards[i]
-                loss = loss - (log_pi[i]*(R)).sum() #- (0.0001*entropies[i]).sum()
+                loss = loss - (log_pi[i]*(R)).sum()
                 
-            loss = loss / len(rewards)
-            
-            # Compute reinforce loss
-            #adjusted_reward = R #- baselines.detach()
-
-            #loss_reinforce = torch.sum(log_pi * R)
-            
-            # Join the losses
-            #loss = -loss_reinforce #+ loss_baseline      
+            loss = loss / len(rewards) 
             
             optimizer.zero_grad()
             
@@ -305,10 +288,7 @@ def train_reinforce(stochastic, episodes=10000, gamma=0.9, alpha=0.0001, hidden=
 
 def grid_search_reinforce(stochastic):
     
-    if stochastic:
-        param_grid = {'alpha': [0.1, 0.001, 0.0001], 'gamma': [1], 'hidden': [32, 64, 128], 'episodes': [1000]}
-    else:
-        param_grid = {'alpha': [0.0001, 0.00001], 'gamma': [1, 0.9], 'hidden': [64, 128], 'episodes': [5000, 10000]}
+    param_grid = {'alpha': [0.0001, 0.00001], 'gamma': [1, 0.9], 'hidden': [64, 128], 'episodes': [5000, 10000]}
     
     env = gym.make('FrozenLake8x8-v1', is_slippery=stochastic)
     
