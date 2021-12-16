@@ -252,7 +252,7 @@ def grid_search_tabular(stochastic):
 
 if __name__ == '__main__':
 
-    Q, env = train_tabular(stochastic=True, episodes=10000, gamma=1, n0=1000)
+    Q, env = train_tabular(stochastic=False, episodes=100, gamma=0.9, n0=1)
     
     play(env, Q)
     
