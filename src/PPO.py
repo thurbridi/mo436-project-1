@@ -9,6 +9,7 @@ from torch import nn
 from torch._C import dtype
 from torch.optim import Adam
 from torch.distributions import Categorical
+import scipy.signal
 
 
 class ExperienceBuffer:
@@ -67,12 +68,12 @@ class ExperienceBuffer:
         weights = (
             self.gamma * self.lambd) ** np.array(range(len(deltas)), dtype=np.float32)
         self.adv_buffer[trajectory] = np.array([np.sum(
-            deltas[i:] * weights[:len(deltas)-i]) for i, _ in enumerate(deltas)], dtype=np.float32)
+            deltas[i:] * weights[:len(deltas)-i]) for i, _ in enumerate(deltas)], dtype=np.float32)[::-1]
 
         # Rewards-to-go
         weights = self.gamma ** np.array(range(len(rewards)), dtype=np.float32)
         self.return_buffer[trajectory] = np.array(
-            [np.sum(rewards[i:] * weights[:len(rewards)-i]) for i, _ in enumerate(rewards)], dtype=np.float32)[:-1]
+            [np.sum(rewards[i:] * weights[:len(rewards)-i]) for i, _ in enumerate(rewards)], dtype=np.float32)[::-1][:-1]
 
         self.traj_start = self.pointer
 
@@ -206,6 +207,7 @@ def PPO_clip(env: gym.Env, actor, critic, actor_lr, critic_lr, epochs, steps_per
                 if epoch_ended and not done:
                     print('Trajectory cut off by epoch')
 
+                if epoch_ended:
                     value = critic.step(
                         torch.as_tensor([obs], dtype=torch.float32).cuda())
                 else:
@@ -237,7 +239,9 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=50)
     args = parser.parse_args()
 
-    np.random.seed(777)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+
     env = gym.make('FrozenLake-v1', is_slippery=False)
 
     obs_dim = env.observation_space.shape
@@ -245,7 +249,7 @@ if __name__ == '__main__':
     obs_dim = 1
     actions_dim = env.action_space.n
 
-    hidden_layers = [64, 128, 64]
+    hidden_layers = [64, 64, 64]
 
     actor = ActorNet(obs_dim, actions_dim, hidden_layers).cuda()
     critic = CriticNet(obs_dim, hidden_layers).cuda()
@@ -268,4 +272,4 @@ if __name__ == '__main__':
     fig = px.line(ep_returns)
     fig.show()
 
-    print(f'Algorithm took: {end-start} seconds')
+    print(f'Algorithm took: {end-start:.2f} seconds')
