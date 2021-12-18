@@ -77,17 +77,24 @@ class ExperienceBuffer:
         self.traj_start = self.pointer
 
 
+def mlp(layer_sizes, activation, output_activation=nn.Identity):
+    layers = []
+    for i in range(len(layer_sizes) - 1):
+        layers.append(nn.Linear(layer_sizes[i], layer_sizes[i+1]))
+        if i < len(layer_sizes) - 2:
+            layers.append(activation())
+        else:
+            layers.append(output_activation())
+
+    return nn.Sequential(*layers)
+
+
 class ActorNet(nn.Module):
     def __init__(self, input_dim, n_actions, layer_sizes, activation=nn.Tanh):
         super(ActorNet, self).__init__()
 
-        self.actor = nn.Sequential(
-            nn.Linear(input_dim, 16),
-            activation(),
-            nn.Linear(16, 16),
-            activation(),
-            nn.Linear(16, n_actions),
-        )
+        self.actor = mlp([input_dim] + list(layer_sizes) +
+                         [n_actions], activation)
 
     def forward(self, obs, action=None):
         logits = self.actor(obs)
@@ -111,13 +118,7 @@ class CriticNet(nn.Module):
     def __init__(self, input_dim, layer_sizes, activation=nn.Tanh):
         super(CriticNet, self).__init__()
 
-        self.critic = nn.Sequential(
-            nn.Linear(input_dim, 16),
-            activation(),
-            nn.Linear(16, 16),
-            activation(),
-            nn.Linear(16, 1),
-        )
+        self.critic = mlp([input_dim] + list(layer_sizes) + [1], activation)
 
     def forward(self, obs):
         value = torch.squeeze(self.critic(obs), -1)
@@ -244,8 +245,10 @@ if __name__ == '__main__':
     obs_dim = 1
     actions_dim = env.action_space.n
 
-    actor = ActorNet(obs_dim, actions_dim, (64, 64)).cuda()
-    critic = CriticNet(obs_dim, (64, 64)).cuda()
+    hidden_layers = [64, 128, 64]
+
+    actor = ActorNet(obs_dim, actions_dim, hidden_layers).cuda()
+    critic = CriticNet(obs_dim, hidden_layers).cuda()
 
     start = time.time()
     ep_returns, ep_lens = PPO_clip(
