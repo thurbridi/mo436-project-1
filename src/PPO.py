@@ -9,7 +9,6 @@ from torch import nn
 from torch._C import dtype
 from torch.optim import Adam
 from torch.distributions import Categorical
-import scipy.signal
 
 
 class ExperienceBuffer:
@@ -119,7 +118,8 @@ class CriticNet(nn.Module):
     def __init__(self, input_dim, layer_sizes, activation=nn.Tanh):
         super(CriticNet, self).__init__()
 
-        self.critic = mlp([input_dim] + list(layer_sizes) + [1], activation)
+        self.critic = mlp([input_dim] + list(layer_sizes) +
+                          [1], activation)
 
     def forward(self, obs):
         value = torch.squeeze(self.critic(obs), -1)
@@ -165,13 +165,13 @@ def PPO_clip(env: gym.Env, actor, critic, actor_lr, critic_lr, epochs, steps_per
         loss_actor_old = compute_loss_actor(data).item()
         loss_critic_old = compute_loss_critic(data).item()
 
-        for i in range(10):
+        for i in range(5):
             policy_optimizer.zero_grad()
             loss_actor = compute_loss_actor(data)
             loss_actor.backward()
             policy_optimizer.step()
 
-        for i in range(10):
+        for i in range(5):
             value_optimizer.zero_grad()
             loss_critic = compute_loss_critic(data)
             loss_critic.backward()
@@ -226,6 +226,73 @@ def PPO_clip(env: gym.Env, actor, critic, actor_lr, critic_lr, epochs, steps_per
     return ep_returns, ep_lens
 
 
+def print_policy(size=8):
+
+    actions_names = ['←', '↓', '→', '↑']
+
+    s = 0
+
+    print("\n\t\t Policy/Actions")
+
+    for _ in range(size):
+        print("------------------------------------------------")
+
+        for _ in range(size):
+
+            # Get the best action
+            action, _ = actor.step(
+                torch.tensor([s], dtype=torch.float).cuda())
+
+            s += 1
+            print("  %s  |" % actions_names[action], end="")
+
+        print("")
+
+    print("------------------------------------------------")
+
+
+def plot_episode_returns(ep_returns, title=''):
+    import plotly.express as px
+    fig = px.line(ep_returns, title='')
+    fig.update_layout(xaxis_title='Episode', yaxis_title='Return')
+    fig.show()
+
+
+def plot_action_value_plotly(critic, title=''):
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    # Generate data
+    grid = np.arange(0, 64, 1)
+    x = grid // 8
+    y = grid % 8
+    # adding surfaces to subplots.
+
+    z = np.array([critic.step(torch.tensor([s], dtype=torch.float).cuda())
+                  for s in grid])
+
+    fig.add_trace(
+        go.Mesh3d(x=x, y=y, z=z, opacity=1.0, showlegend=True))
+
+    fig.update_layout(
+        scene_camera=dict(
+            up=dict(x=0, y=0, z=1),
+            center=dict(x=0, y=0, z=0),
+            eye=dict(x=1.5, y=-1.5, z=1.25)
+        ),
+        scene=dict(
+            xaxis_title='Row',
+            yaxis_title='Col',
+            zaxis_title='V(s)'
+        ),
+        title_text=title,
+        height=800,
+        width=800
+    )
+
+    fig.show()
+
+
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
@@ -242,14 +309,14 @@ if __name__ == '__main__':
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
 
-    env = gym.make('FrozenLake-v1', is_slippery=False)
+    env = gym.make('FrozenLake8x8-v1', is_slippery=False)
 
     obs_dim = env.observation_space.shape
 
     obs_dim = 1
     actions_dim = env.action_space.n
 
-    hidden_layers = [64, 64, 64]
+    hidden_layers = [64, 64]
 
     actor = ActorNet(obs_dim, actions_dim, hidden_layers).cuda()
     critic = CriticNet(obs_dim, hidden_layers).cuda()
@@ -268,8 +335,10 @@ if __name__ == '__main__':
     )
     end = time.time()
 
-    import plotly.express as px
     fig = px.line(ep_returns)
     fig.show()
 
     print(f'Algorithm took: {end-start:.2f} seconds')
+
+    print_policy()
+    plot_action_value_plotly()
