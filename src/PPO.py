@@ -226,7 +226,7 @@ def PPO_clip(env: gym.Env, actor, critic, actor_lr, critic_lr, epochs, steps_per
     return ep_returns, ep_lens
 
 
-def print_policy(size=8):
+def print_policy(actor, size=8):
 
     actions_names = ['←', '↓', '→', '↑']
 
@@ -254,7 +254,7 @@ def print_policy(size=8):
 def plot_episode_returns(ep_returns, title=''):
     import plotly.express as px
     fig = px.line(ep_returns, title='')
-    fig.update_layout(xaxis_title='Episode', yaxis_title='Return')
+    fig.update_layout(xaxis_title='Episode', yaxis_title='Return', title=title)
     fig.show()
 
 
@@ -335,10 +335,8 @@ if __name__ == '__main__':
     )
     end = time.time()
 
-    fig = px.line(ep_returns)
-    fig.show()
-
     print(f'Algorithm took: {end-start:.2f} seconds')
 
-    print_policy()
-    plot_action_value_plotly()
+    print_policy(actor)
+    plot_episode_returns(ep_returns)
+    plot_action_value_plotly(critic)
